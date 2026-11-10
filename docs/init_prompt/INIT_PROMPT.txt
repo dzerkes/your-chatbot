@@ -1,0 +1,92 @@
+First of all let's define the project once again so that we can design the project and write a plan commiy-by-commit. 
+
+Tasks:
+
+Setup docs, pyproject.toml, .env, .env.example, README.md, anything related with the project setup
+then commit in docs/plan/PROJECT_PLAN.md the commit plans that we will perform. 
+Keep a CHANGELOG.md that tracks all the important changes with dates/ commits etc.. 
+Our project needs, Chat UI, API + agent loop, LLM gateway (fallbacks, cost), MCP tool server (sql, rag, graph whatever), postgres for history and memory. 
+Also we need Tracing + evals (spans per session, llm call, tool call)
+Framework choice: openai sdk, anthropic sdk (easily pluggable new sdk's)
+Tools: MCP with search_docs, query_prjects , return compact results with pagination. 
+For RAG, use hybrid search bm25 plus vectors with a reranker and metadata filters for access control. 
+For SQL, give the bot a read-only role curated views, not raw tables. (explain why)
+Keep tools read-only. 
+For history, sessions and messages use postgres and tool calls and results stored as jsonb. When context gets long, trim or summarize old turns. We can implement different strategies for this one and apply whatever is necessary.
+Memory: cross-session facts about the user, exposed to the model as a small read/write tool. Many enterprise bots don’t need this at first, so add it when users ask for it.
+Tracing: Instrument with OpenTelemetry and send data to LangFuse, which is self-hostable and has sessions, traces, costs and evals built in. Trace hierachy is session -> turn -> llm call or tool call, with tokens, latency and cost on each.  Keep a separate append-only audit log for compliance. 
+
+Interaction with a complete system:
+we need a complete system. 
+What a Data Scientist would provide
+What a backend engineer would provide
+And how UI would look in practice for the end user
+DS side:
+store results, return answers
+respond(session_id, user_message, user) -> stream 
+load history and build the context
+run the agent loop and tools
+save the new messages and tool calls
+emit traces
+What makes DS good (retrieval quality, tool design, prompts, evals)
+Backend:
+calls DS function and reads the tables we write. In our project, we will just do a small FastAPI service for the backend 
+Frontend:
+a streamlit app that will call the backend service that calls the DS chatbot. 
+
+Project Structure:
+
+User Docker Composer with several containers. Each part gets its own container: Postgres, backend, frontend and optionally langfuse. 
+MAke the chatbot folder an installable package that the backend imports. 
+Keep the backend thin: routes, auth, session endpoints, All the AI logic stays in your package so you can test and evaluate it without web layer. 
+Streamlit should only talk to the backend over HTTP, never import chatbot directly. 
+
+How the PoC structure could look
+
+chatbot-poc/
+├── docker-compose.yml
+├── .env.example          # API keys, DB URL, Langfuse keys
+├── .gitlab-ci.yml        # lint, tests, evals
+├── pyproject.toml        # uv workspace root
+├── frontend/             # Streamlit, calls backend API
+│   └── app.py
+├── backend/              # FastAPI: sessions, messages, /chat stream
+│   ├── app/
+│   └── migrations/       # Alembic
+├── chatbot/              # the brain
+│   ├── src/chatbot/
+│   │   ├── agent.py      # loop: respond(session, msg, user)
+│   │   ├── context.py    # history trimming, summaries
+│   │   ├── llm.py        # provider / LiteLLM client
+│   │   ├── tools/        # search_docs, query_sql, ...
+│   │   ├── prompts/
+│   │   └── tracing.py
+│   └── tests/
+└── evals/                # questions + expected answers, runner
+
+Some details:
+Postgres: use the pgvector/pgvector image, so the same database handles history, memory, and vector search.
+Langfuse: self-hosting it is heavier than the rest of your stack (it needs ClickHouse, Redis, and object storage). For a proof of concept, its free cloud tier is simpler, as long as you test with non-sensitive data. Otherwise, run their own compose file next to yours.
+Tools: start them as plain functions inside tools/. Once that works, move them behind an mcp_servers/ folder. It’s a small refactor if each tool already has a clean typed signature.
+uv workspace: this lets backend depend on chatbot as a local package, with one lockfile for the repo.
+
+A good first milestone: docker compose up gives you a Streamlit chat with session history and a single tool working, with every turn visible as a trace in Langfuse.
+
+
+Software Design Patterns:
+
+wherever it is reasonable and makes our life easier use the correct software design patterns. E.g. when we have many llm providers or many strategies for memory management, etc.. It might be good to apply strategy design pattern or other useful that could make our life easier without sacrificing making our code complicated.
+
+Also, it is good if our code is easily debuggable.
+
+Extras: 
+
+An eval set of real questions with expected answers, run on every prompt, tool, or model change.
+Defenses against prompt injection from retrieved documents.
+Thumbs up/down feedback linked to the trace, so you can review bad answers.
+Rate limits and cost caps per user.
+
+
+I think you should start by setting up the basic stuff for the repo and then write in docs the commit-plan analytically. Also, i will store this prompt in our docs.
+
+

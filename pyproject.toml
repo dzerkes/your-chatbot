@@ -1,0 +1,65 @@
+# Workspace root. This file holds only shared tooling and the uv workspace
+# definition. Each deployable part (chatbot, backend, frontend, ...) is its own
+# package with its own pyproject.toml and is added to `members` in the commit
+# that introduces it (see docs/plan/PROJECT_PLAN.md).
+
+[project]
+name = "your-chatbot"
+version = "0.1.0"
+description = "Proof of concept: a chatbot over company data (agent loop, MCP tools, hybrid RAG, Postgres history and memory, tracing and evals)."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+authors = [{ name = "Dimitris Zerkelidis" }]
+dependencies = []
+
+[tool.uv]
+# The root is not an installable package, only a home for tooling.
+package = false
+
+[tool.uv.workspace]
+# Planned members, added one by one:
+#   "chatbot"      C04  the brain (agent loop, tools, context, tracing)
+#   "backend"      C14  FastAPI service that imports `chatbot`
+#   "frontend"     C15  Streamlit app, talks to the backend over HTTP only
+#   "mcp_servers"  C22  tools exposed over MCP
+#   "evals"        C29  eval datasets and runner
+members = []
+
+[dependency-groups]
+dev = [
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=5",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W",  # pycodestyle, pyflakes
+    "I",            # import sorting
+    "B",            # bugbear
+    "UP",           # pyupgrade
+    "SIM",          # simplifications
+    "ASYNC",        # async pitfalls
+    "RUF",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+addopts = "-ra --strict-markers"
+markers = [
+    "unit: fast, no network, no database (default)",
+    "integration: needs the Postgres container",
+    "llm: calls a real LLM provider and costs money",
+]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_ignores = true

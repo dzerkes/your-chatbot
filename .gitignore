@@ -1,0 +1,28 @@
+# Secrets: never commit real values. `.env.example` is the committed template.
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Local data, model caches, eval outputs
+data/local/
+.cache/
+evals/results/
+*.log
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
