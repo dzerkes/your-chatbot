@@ -44,7 +44,7 @@ affecting the commits before them.
 
 ## Phase 0: Foundation
 
-### [ ] C01 `chore: set up repository scaffolding`
+### [x] C01 `chore: set up repository scaffolding`
 
 - **Goal:** a repo that explains itself and has its tooling configured.
 - **Files:** `README.md`, `pyproject.toml`, `.python-version`, `.gitignore`,
@@ -53,7 +53,7 @@ affecting the commits before them.
 - **Done when:** `uv sync` installs the dev tools and `uv run ruff check .`
   passes.
 
-### [ ] C02 `docs: add commit-by-commit project plan`
+### [x] C02 `docs: add commit-by-commit project plan`
 
 - **Goal:** this file, plus the original brief under `docs/init_prompt/`.
 - **Done when:** every requirement in the brief maps to a commit below.
