@@ -14,9 +14,12 @@ All important changes to this project are recorded here, newest first.
 
 | Plan id | Commit | Type | Change |
 |---|---|---|---|
-| C05 | Pending | Added | Alembic history migration for users, sessions, turns and JSONB messages, with keys, checks, indexes and cascading history cleanup. |
-| C05 | Pending | Security | Migration-owner connection and table-only read/write grants to `chatbot_app`; `chatbot_ro` has no history-table access. |
-| C05 | Pending | Added | One-shot Compose migration service and an isolated-database integration test covering upgrade, permissions, tool-call content and downgrade. |
+| C06 | Pending | Added | `SessionStore` and `MessageStore` protocols, with async Postgres and in-memory implementations for users, sessions, turns and messages. |
+| C06 | Pending | Security | Session-owner scoping on history reads and turn writes; a failed message insert rolls back the entire turn. |
+| C06 | Pending | Added | Shared store contract tests, including an isolated Postgres round-trip of tool calls/results and rollback checks; `make migrate` prepares the schema for integration tests. |
+| C05 | `c8139de` | Added | Alembic history migration for users, sessions, turns and JSONB messages, with keys, checks, indexes and cascading history cleanup. |
+| C05 | `c8139de` | Security | Migration-owner connection and table-only read/write grants to `chatbot_app`; `chatbot_ro` has no history-table access. |
+| C05 | `c8139de` | Added | One-shot Compose migration service and an isolated-database integration test covering upgrade, permissions, tool-call content and downgrade. |
 
 ### 2026-11-11
 

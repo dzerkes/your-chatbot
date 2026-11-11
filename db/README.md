@@ -9,7 +9,7 @@ Start Postgres, then run the one-shot migration service:
 
 ```bash
 make up
-docker compose run --rm migrate
+make migrate
 ```
 
 The service mounts the project read-only, installs dependencies from `uv.lock`
@@ -42,7 +42,8 @@ The first revision creates:
 ensures every message references a turn in the same session. Unique session-wide
 sequence numbers give each message a stable order. Foreign keys cascade from a
 deleted user through sessions and turns to messages. The application must update
-`updated_at` when it changes a session or turn.
+`updated_at` when it changes a session or turn. The C06 history store does this
+when it updates session metadata or saves a turn.
 
 `chatbot_app` can select, insert, update and delete rows in those four tables.
 It cannot alter the schema or read Alembic's version table. `chatbot_ro` has no

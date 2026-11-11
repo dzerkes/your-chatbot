@@ -33,3 +33,21 @@ class StepLimitExceeded(ChatbotError):
     """The agent reached its configured step limit."""
 
     code = "step_limit_exceeded"
+
+
+class StoreError(ChatbotError):
+    """A history operation could not be completed."""
+
+    code = "store_error"
+
+
+class NotFoundError(StoreError):
+    """The requested user or session is unavailable to this caller."""
+
+    code = "not_found"
+
+
+class ConflictError(StoreError):
+    """A turn or message conflicts with existing history."""
+
+    code = "conflict"

@@ -1,7 +1,8 @@
 # Chatbot core
 
 This package holds the application code shared by the future CLI, backend and
-eval runner. It has no FastAPI, Streamlit, database or provider SDK dependency.
+eval runner. It has no FastAPI, Streamlit or provider SDK dependency. The store
+module uses psycopg for Postgres history persistence.
 The agent loop and `respond()` will be implemented in C11.
 
 ## Settings and logging
@@ -64,3 +65,48 @@ This shape will become the persistence and streaming contract in later commits.
 `ToolError`, `ContextOverflow` and `StepLimitExceeded` exceptions. Each has a
 stable `code` and a `retryable` flag. Error messages must be safe to show users;
 chain underlying SDK exceptions with `raise ... from ...` when needed.
+
+## History stores
+
+`chatbot.store.base` defines `SessionStore` and `MessageStore` protocols and the
+`Session` and `Turn` records. `HistoryStore` combines both protocols. The two
+implementations are `MemoryStore` and `PostgresStore`:
+
+```python
+from chatbot.config import Settings
+from chatbot.store.base import Turn
+from chatbot.store.postgres import PostgresStore
+from chatbot.types import Message, Text, User
+
+
+async def example() -> None:
+    async with PostgresStore(Settings()) as store:
+        user = await store.upsert_user(User(external_id="alice", display_name="Alice"))
+        session = await store.create_session(user.id, title="New chat")
+        turn = Turn(session_id=session.id, status="completed")
+        message = Message(
+            session_id=session.id,
+            turn_id=turn.id,
+            sequence=0,
+            role="user",
+            content=[Text(text="Hello")],
+        )
+        await store.save_turn(turn, [message], user.id)
+```
+
+`PostgresStore` opens an async connection pool when entered and closes it on
+exit. It connects as `APP_DB_USER`, never as the migration owner. Construct
+`MemoryStore()` directly for tests; it needs no database or lifecycle step.
+
+`upsert_user` returns the existing UUID when an external identity already
+exists and refreshes its display name and groups. `get_session`, `list_sessions`,
+`list_turns`, `list_messages` and `save_turn` require the owner's UUID. A caller
+cannot read or add a turn to someone else's session. `update_session` changes
+title and summary, using the session's owner ID to scope the update.
+
+`save_turn` inserts the turn and all messages in one transaction and updates
+the session's activity time. A conflict or error rolls back the whole batch.
+Message sequence numbers are unique across a session and supplied by the caller;
+the repository rejects duplicate values. Tool calls and results stay as
+provider-neutral content blocks in JSONB. Both implementations return the same
+domain objects. `MemoryStore` makes copies so callers cannot mutate saved data.

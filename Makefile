@@ -1,7 +1,7 @@
 COMPOSE ?= docker compose
 UV ?= uv
 
-.PHONY: up down psql test test-integration lint
+.PHONY: up down psql migrate test test-integration lint
 
 up:
 	$(COMPOSE) up -d --wait postgres
@@ -12,10 +12,13 @@ down:
 psql:
 	$(COMPOSE) exec postgres sh -c 'PGPASSWORD="$$OWNER_DB_PASSWORD" exec psql -X -h 127.0.0.1 -U "$$OWNER_DB_USER" -d "$$POSTGRES_DB"'
 
+migrate: up
+	$(COMPOSE) run --rm migrate
+
 test:
 	$(UV) run pytest -m 'not integration and not llm'
 
-test-integration: up
+test-integration: migrate
 	$(UV) run pytest -m integration
 
 lint:

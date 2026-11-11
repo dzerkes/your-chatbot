@@ -102,13 +102,14 @@ real tracing, before making any single layer good.
 - **Done when:** `docker compose run migrate` creates the tables and
   `alembic downgrade base` removes them.
 
-### [ ] C06 `feat(chatbot): add session and message repositories`
+### [x] C06 `feat(chatbot): add session and message repositories`
 
 - **Goal:** all history SQL in one place.
 - **Files:** `chatbot/src/chatbot/store/{base,postgres,memory}.py`.
 - **Details:** Repository pattern. `SessionStore` and `MessageStore` protocols
   with a Postgres implementation (async) and an in-memory one for unit tests.
-  Writes for one turn happen in one transaction.
+  Writes for one turn happen in one transaction. Reads and writes take an owner
+  id; a saved turn advances the session's activity timestamp.
 - **Done when:** integration tests round-trip a session with a tool call and a
   tool result and read it back identical.
 

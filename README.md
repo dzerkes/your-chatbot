@@ -4,9 +4,9 @@ A proof of concept for a chatbot that answers questions from company data. It is
 built as a complete, small system: a chat UI, a thin API, an agent loop with
 tools, Postgres for history and memory, and tracing plus evals around all of it.
 
-> **Status:** Postgres with pgvector runs locally, the history tables are managed
-> by Alembic (C05), and the `chatbot` package provides settings, logging and
-> domain types. The agent and web services
+> **Status:** Postgres with pgvector and Alembic migrations run locally. The
+> `chatbot` package provides settings, domain types and session/message stores
+> (C06). The agent and web services
 > are still planned. The build order is in
 > [docs/plan/PROJECT_PLAN.md](docs/plan/PROJECT_PLAN.md) and progress is tracked
 > in [CHANGELOG.md](CHANGELOG.md).
@@ -63,9 +63,9 @@ Requirements: Docker, [uv](https://docs.astral.sh/uv/), Python 3.12.
 cp .env.example .env     # choose database passwords; API keys are needed later
 uv sync                  # installs chatbot and the shared dev tools
 make up                  # starts Postgres and waits for its healthcheck
-docker compose run --rm migrate  # creates or updates the history tables
+make migrate             # creates or updates the history tables
 make psql                # connects as the migration owner (\q to exit)
-make test-integration    # checks pgvector, authentication and database permissions
+make test-integration    # starts Postgres, migrates, then runs integration tests
 make down                # stops containers; keeps the named database volume
 ```
 
@@ -92,6 +92,10 @@ creates `users`, `sessions`, `turns` and `messages`; see [db/README.md](db/READM
 for the schema, grants and downgrade command. If the host's port 5432 is in
 use, set `POSTGRES_PORT=55432` in `.env` before `make up` or Compose commands.
 
+The async `PostgresStore` uses the application role for history reads and
+writes. `MemoryStore` follows the same interface for unit tests. See
+[chatbot/README.md](chatbot/README.md) for the store contract and lifecycle.
+
 From milestone M1 onward (commit C16 in the plan):
 
 ```bash
@@ -105,7 +109,7 @@ make lint                # lint and check formatting
 uv run ruff format .     # format
 uv run mypy .            # types
 make test                # unit tests (no network, no database)
-make test-integration    # starts Postgres, then runs integration tests
+make test-integration    # starts Postgres, migrates, then runs integration tests
 ```
 
 The `chatbot` package is installed in editable mode by `uv sync`, so source
