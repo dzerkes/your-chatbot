@@ -113,7 +113,7 @@ real tracing, before making any single layer good.
 - **Done when:** integration tests round-trip a session with a tool call and a
   tool result and read it back identical.
 
-### [ ] C07 `feat(llm): add provider interface, Anthropic adapter and scripted fake`
+### [x] C07 `feat(llm): add provider interface, Anthropic adapter and scripted fake`
 
 - **Goal:** one interface the rest of the code talks to.
 - **Files:** `chatbot/src/chatbot/llm/{base,anthropic,fake}.py`.

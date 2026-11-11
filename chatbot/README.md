@@ -1,8 +1,8 @@
 # Chatbot core
 
 This package holds the application code shared by the future CLI, backend and
-eval runner. It has no FastAPI, Streamlit or provider SDK dependency. The store
-module uses psycopg for Postgres history persistence.
+eval runner. It has no FastAPI or Streamlit dependency. The store module uses
+psycopg for Postgres history persistence; the Anthropic adapter uses its SDK.
 The agent loop and `respond()` will be implemented in C11.
 
 ## Settings and logging
@@ -110,3 +110,34 @@ Message sequence numbers are unique across a session and supplied by the caller;
 the repository rejects duplicate values. Tool calls and results stay as
 provider-neutral content blocks in JSONB. Both implementations return the same
 domain objects. `MemoryStore` makes copies so callers cannot mutate saved data.
+
+## LLM providers
+
+`chatbot.llm.base` defines `LLMProvider.stream(request)`, a provider-neutral
+async stream. `LLMRequest` contains the system prompt, message history, tool
+definitions, output token limit and optional timeout. A stream yields text
+deltas and completed tool calls, followed by cumulative usage and a stop reason.
+The adapter converts Anthropic cache token counts into the shared `Usage` shape.
+
+```python
+from chatbot.config import Settings
+from chatbot.llm.anthropic import AnthropicProvider
+from chatbot.llm.base import LLMRequest, LLMTextDelta
+
+
+async def stream_reply(request: LLMRequest) -> None:
+    settings = Settings()
+    provider = AnthropicProvider(settings.llm_primary.removeprefix("anthropic:"), settings)
+    try:
+        async for event in provider.stream(request):
+            if isinstance(event, LLMTextDelta):
+                print(event.text, end="", flush=True)
+    finally:
+        await provider.aclose()
+```
+
+`ScriptedProvider` accepts one sequence of events or exceptions per request and
+records copies of requests for assertions. It needs no API key. The adapter
+unit tests use recorded stream events. To run the live test, set
+`ANTHROPIC_API_KEY` and run `uv run pytest -m llm tests/test_llm_live.py`.
+The default pytest run excludes `llm` tests.

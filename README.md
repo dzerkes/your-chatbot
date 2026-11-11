@@ -5,8 +5,8 @@ built as a complete, small system: a chat UI, a thin API, an agent loop with
 tools, Postgres for history and memory, and tracing plus evals around all of it.
 
 > **Status:** Postgres with pgvector and Alembic migrations run locally. The
-> `chatbot` package provides settings, domain types and session/message stores
-> (C06). The agent and web services
+> `chatbot` package provides settings, domain types, session/message stores,
+> and an Anthropic LLM adapter (C07). The agent and web services
 > are still planned. The build order is in
 > [docs/plan/PROJECT_PLAN.md](docs/plan/PROJECT_PLAN.md) and progress is tracked
 > in [CHANGELOG.md](CHANGELOG.md).
@@ -94,7 +94,7 @@ use, set `POSTGRES_PORT=55432` in `.env` before `make up` or Compose commands.
 
 The async `PostgresStore` uses the application role for history reads and
 writes. `MemoryStore` follows the same interface for unit tests. See
-[chatbot/README.md](chatbot/README.md) for the store contract and lifecycle.
+[chatbot/README.md](chatbot/README.md) for the store and LLM provider contracts.
 
 From milestone M1 onward (commit C16 in the plan):
 
@@ -110,6 +110,7 @@ uv run ruff format .     # format
 uv run mypy .            # types
 make test                # unit tests (no network, no database)
 make test-integration    # starts Postgres, migrates, then runs integration tests
+uv run pytest -m llm tests/test_llm_live.py  # opt-in real API stream; needs key
 ```
 
 The `chatbot` package is installed in editable mode by `uv sync`, so source
