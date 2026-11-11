@@ -10,6 +10,8 @@ from typing import Literal, TypedDict
 from uuid import UUID, uuid4
 from weakref import WeakValueDictionary
 
+from anyio import CancelScope
+
 from chatbot.config import Settings
 from chatbot.context import build_context_builder
 from chatbot.context.base import ContextBuilder
@@ -260,7 +262,8 @@ class Agent:
                 messages, pending, step_usage, turn, next_sequence, "Turn was interrupted"
             )
             try:
-                await self._save(turn, messages, user, usage, started, failed=True)
+                with CancelScope(shield=True):
+                    await self._save(turn, messages, user, usage, started, failed=True)
             except Exception:
                 logger.exception("Could not save interrupted conversation")
             raise

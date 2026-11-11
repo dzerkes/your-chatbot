@@ -9,6 +9,7 @@ from uuid import uuid4
 
 import psycopg
 import pytest
+from app.main import create_app
 from chatbot.cli import chat
 from chatbot.config import Settings
 from chatbot.errors import ToolError
@@ -21,6 +22,7 @@ from chatbot.tools.pagination import ToolPage
 from chatbot.tools.query_projects import QueryProjects
 from chatbot.tools.registry import ToolRegistry
 from chatbot.types import ToolResult, ToolUse, Usage, User
+from httpx import ASGITransport, AsyncClient
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from psycopg import errors, sql
 from psycopg.conninfo import make_conninfo
@@ -337,3 +339,67 @@ async def test_cli_demo_query_and_session_resume(
     assert "2026-01-15" in capsys.readouterr().out
     assert len(provider.requests[2].messages) == 5
     assert len(exporters) == (2 if enable_tracing else 0)
+
+
+async def test_backend_project_chat_and_owner_scoping(
+    project_database: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = ScriptedProvider(
+        [
+            [
+                LLMToolCall(
+                    tool_use=ToolUse(
+                        id="api-projects",
+                        name="query_projects",
+                        arguments={"status": "active", "client": "Northstar"},
+                    )
+                ),
+                LLMUsage(usage=Usage(input_tokens=10, output_tokens=2)),
+                LLMStop(reason="tool_use"),
+            ],
+            [
+                LLMTextDelta(text="Research Portal is active."),
+                LLMUsage(usage=Usage()),
+                LLMStop(reason="end_turn"),
+            ],
+        ]
+    )
+    monkeypatch.setattr(ProviderRegistry, "get_primary", lambda self: provider)
+    monkeypatch.setattr("app.main.configure_logging", lambda settings: None)
+    settings = project_database.model_copy(
+        update={
+            "tracing_enabled": False,
+            "auth_dev_tokens": SecretStr("api-alice:api-alice,api-bob:api-bob"),
+        }
+    )
+    app = create_app(settings)
+    alice, bob = {"Authorization": "Bearer api-alice"}, {"Authorization": "Bearer api-bob"}
+    async with (
+        app.router.lifespan_context(app),
+        AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client,
+    ):
+        created = await client.post("/sessions", json={"title": "Projects"}, headers=alice)
+        assert created.status_code == 201
+        session_id = created.json()["id"]
+        denied = await client.post(
+            f"/sessions/{session_id}/chat", json={"message": "Hi"}, headers=bob
+        )
+        assert denied.status_code == 404 and provider.requests == []
+        reply = await client.post(
+            f"/sessions/{session_id}/chat",
+            json={"message": "Which Northstar projects are active?"},
+            headers=alice,
+        )
+        assert reply.status_code == 200
+        assert "event: tool_call_started" in reply.text and "event: turn_completed" in reply.text
+        detail = (await client.get(f"/sessions/{session_id}", headers=alice)).json()
+        assert [message["role"] for message in detail["messages"]] == [
+            "user",
+            "assistant",
+            "tool",
+            "assistant",
+        ]
+        result = detail["messages"][2]["content"][0]
+        assert not result["is_error"] and result["content"]["items"][0]["name"] == "Research Portal"
+        assert (await client.get(f"/sessions/{session_id}", headers=bob)).status_code == 404

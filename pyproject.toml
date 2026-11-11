@@ -24,15 +24,18 @@ package = false
 #   "frontend"     C15  Streamlit app, talks to the backend over HTTP only
 #   "mcp_servers"  C22  tools exposed over MCP
 #   "evals"        C29  eval datasets and runner
-members = ["chatbot"]
+members = ["chatbot", "backend"]
 
 [tool.uv.sources]
 chatbot = { workspace = true }
+chatbot-backend = { workspace = true }
 
 [dependency-groups]
 dev = [
     "alembic>=1.14,<2",
     "chatbot",
+    "chatbot-backend",
+    "httpx>=0.27,<1",
     "ruff>=0.6",
     "mypy>=1.11",
     "pytest>=8",

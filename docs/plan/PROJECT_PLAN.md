@@ -194,7 +194,7 @@ real tracing, before making any single layer good.
 - **Done when:** an in-memory exporter test asserts the span tree, and a CLI
   chat shows up in Langfuse grouped by session.
 
-### [ ] C14 `feat(backend): add FastAPI service with auth, sessions and chat stream`
+### [x] C14 `feat(backend): add FastAPI service with auth, sessions and chat stream`
 
 - **Goal:** the thin web layer.
 - **Files:** `backend/pyproject.toml`, `backend/app/{main,auth,deps}.py`,

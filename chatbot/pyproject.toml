@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "Provider-neutral chatbot core, independent of the web layer."
 requires-python = ">=3.12"
 dependencies = [
+    "anyio>=4,<5",
     "anthropic>=2.8,<3",
     "pydantic>=2.9,<3",
     "pydantic-settings>=2.7,<3",

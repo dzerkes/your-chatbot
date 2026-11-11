@@ -8,7 +8,8 @@ tools, Postgres for history and memory, and tracing plus evals around all of it.
 > `chatbot` package provides settings, domain types, session/message stores,
 > Anthropic/OpenAI LLM adapters, and a terminal agent that queries synthetic
 > project data and saves conversations, with configurable full or recent-turn
-> model context and OpenTelemetry tracing to Langfuse (C13). Web services are still planned.
+> model context and OpenTelemetry tracing to Langfuse. A FastAPI service exposes
+> authenticated sessions and streaming chat (C14). The chat UI is still planned.
 > The build order is in
 > [docs/plan/PROJECT_PLAN.md](docs/plan/PROJECT_PLAN.md) and progress is tracked
 > in [CHANGELOG.md](CHANGELOG.md).
@@ -83,6 +84,11 @@ uv run python -m chatbot.cli chat --user alice --prompt "Which Northstar project
 Use `--session SESSION_UUID` with the same user to resume a conversation.
 Interactive chat exits with `/quit` or `/exit`. See [chatbot/README.md](chatbot/README.md)
 for the streaming `respond()` interface and lifecycle.
+
+Start the HTTP API with `uv run --package chatbot-backend python -m app`.
+It uses `BACKEND_PORT` (default 8000); `/docs` provides interactive API docs.
+See [backend/README.md](backend/README.md) for bearer-token configuration,
+session endpoints and a `curl -N` streaming example.
 
 To trace CLI conversations, set `TRACING_ENABLED=true` and the Langfuse project
 keys in `.env`. Traces are grouped by session; see the

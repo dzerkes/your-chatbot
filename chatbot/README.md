@@ -1,6 +1,6 @@
 # Chatbot core
 
-This package holds the application code shared by the future CLI, backend and
+This package holds the application code shared by the CLI, backend and future
 eval runner. It has no FastAPI or Streamlit dependency. The store module uses
 psycopg for Postgres history persistence; the Anthropic and OpenAI adapters use
 their SDKs.
