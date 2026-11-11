@@ -8,8 +8,8 @@ tools, Postgres for history and memory, and tracing plus evals around all of it.
 > `chatbot` package provides settings, domain types, session/message stores,
 > Anthropic/OpenAI LLM adapters, and a terminal agent that queries synthetic
 > project data and saves conversations, with configurable full or recent-turn
-> model context and OpenTelemetry tracing to Langfuse. A FastAPI service exposes
-> authenticated sessions and streaming chat (C14). The chat UI is still planned.
+> model context and OpenTelemetry tracing to Langfuse. FastAPI and Streamlit
+> provide authenticated sessions, streamed chat and conversation resume (C15).
 > The build order is in
 > [docs/plan/PROJECT_PLAN.md](docs/plan/PROJECT_PLAN.md) and progress is tracked
 > in [CHANGELOG.md](CHANGELOG.md).
@@ -89,6 +89,11 @@ Start the HTTP API with `uv run --package chatbot-backend python -m app`.
 It uses `BACKEND_PORT` (default 8000); `/docs` provides interactive API docs.
 See [backend/README.md](backend/README.md) for bearer-token configuration,
 session endpoints and a `curl -N` streaming example.
+
+In another terminal, run `uv run --package chatbot-frontend python -m frontend`
+and open `http://localhost:8501`. Sign in with a configured dev bearer token,
+then create or reopen a conversation. See [frontend/README.md](frontend/README.md)
+for frontend settings and reload behavior.
 
 To trace CLI conversations, set `TRACING_ENABLED=true` and the Langfuse project
 keys in `.env`. Traces are grouped by session; see the

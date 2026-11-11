@@ -14,9 +14,11 @@ All important changes to this project are recorded here, newest first.
 
 | Plan id | Commit | Type | Change |
 |---|---|---|---|
-| C14 | Pending | Added | FastAPI workspace service with lifespan-owned chatbot resources, dev bearer authentication, owner-scoped session endpoints, health and POST chat SSE. |
-| C14 | Pending | Security | Server-controlled user identity, forbidden extra request fields, 404 for inaccessible sessions, and safe HTTP error handling. |
-| C14 | Pending | Added | Scripted API tests, real database/tool integration coverage and cancellation-shielded persistence when a streaming client disconnects. |
+| C15 | Pending | Added | Streamlit workspace client with saved conversations, new-chat drafts, streaming replies, collapsed tool activity and URL-based session selection. |
+| C15 | Pending | Added | Independent frontend settings and HTTP/SSE client, friendly failures, account-change isolation, and AppTest coverage including a real API/Postgres reload-and-resume walkthrough. |
+| C14 | `d51f349` | Added | FastAPI workspace service with lifespan-owned chatbot resources, dev bearer authentication, owner-scoped session endpoints, health and POST chat SSE. |
+| C14 | `d51f349` | Security | Server-controlled user identity, forbidden extra request fields, 404 for inaccessible sessions, and safe HTTP error handling. |
+| C14 | `d51f349` | Added | Scripted API tests, real database/tool integration coverage and cancellation-shielded persistence when a streaming client disconnects. |
 | C13 | `1a81b58` | Added | Private OpenTelemetry tracer provider and Langfuse OTLP/HTTP batch export, with no telemetry setup when tracing is disabled and exporter draining on application exit. |
 | C13 | `1a81b58` | Added | Session/turn/LLM/tool span hierarchy, persisted OpenTelemetry trace IDs, model and cache usage, timings, tool arguments/result sizes and error status. Cost attributes remain marked uncalculated until C25. |
 | C13 | `1a81b58` | Added | In-memory tracing tests, CLI integration checks for enabled/disabled export, and a live scripted CLI trace verified through Langfuse's observations and session APIs. |

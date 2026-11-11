@@ -1,0 +1,22 @@
+[build-system]
+requires = ["hatchling>=1.26,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "chatbot-frontend"
+version = "0.1.0"
+description = "Streamlit chat client for the chatbot HTTP API."
+requires-python = ">=3.12"
+dependencies = [
+    "streamlit>=1.50,<2",
+    "httpx>=0.27,<1",
+    "pydantic>=2.9,<3",
+    "pydantic-settings>=2.7,<3",
+]
+
+[tool.hatch.build]
+dev-mode-dirs = [".."]
+
+[tool.hatch.build.targets.wheel]
+only-include = ["__init__.py", "__main__.py", "app.py", "api_client.py", "config.py"]
+sources = {"" = "frontend"}

@@ -206,7 +206,7 @@ real tracing, before making any single layer good.
 - **Done when:** API tests pass with the scripted provider, and `curl -N`
   shows a streamed answer.
 
-### [ ] C15 `feat(frontend): add Streamlit chat UI`
+### [x] C15 `feat(frontend): add Streamlit chat UI`
 
 - **Goal:** what the end user sees.
 - **Files:** `frontend/pyproject.toml`, `frontend/app.py`, `frontend/api_client.py`.
@@ -216,6 +216,8 @@ real tracing, before making any single layer good.
   the backend.
 - **Done when:** a manual run-through works: new chat, ask, reload the page,
   reopen the session, continue it.
+- **Verification:** the flow passes AppTest against the running API and Postgres.
+  Native browser review was blocked by unavailable Computer Use permissions.
 
 ### [ ] C16 `feat(infra): add Dockerfiles and wire all services in compose`
 
