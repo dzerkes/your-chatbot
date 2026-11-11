@@ -25,5 +25,27 @@ services:
       retries: 12
       start_period: 10s
 
+  migrate:
+    image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+    profiles: ["tools"]
+    working_dir: /workspace
+    environment:
+      UV_PROJECT_ENVIRONMENT: /tmp/chatbot-venv
+      UV_LINK_MODE: copy
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-chatbot}
+      POSTGRES_USER: ${POSTGRES_USER:-chatbot_owner}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      APP_DB_USER: ${APP_DB_USER:-chatbot_app}
+    volumes:
+      - ./:/workspace:ro
+      - uv_cache:/root/.cache/uv
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["uv", "run", "--locked", "alembic", "-c", "db/alembic.ini", "upgrade", "head"]
+
 volumes:
   postgres_data:
+  uv_cache:

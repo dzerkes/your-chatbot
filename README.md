@@ -4,8 +4,9 @@ A proof of concept for a chatbot that answers questions from company data. It is
 built as a complete, small system: a chat UI, a thin API, an agent loop with
 tools, Postgres for history and memory, and tracing plus evals around all of it.
 
-> **Status:** Postgres with pgvector runs locally, and the `chatbot` package
-> provides settings, logging and domain types (C04). The agent and web services
+> **Status:** Postgres with pgvector runs locally, the history tables are managed
+> by Alembic (C05), and the `chatbot` package provides settings, logging and
+> domain types. The agent and web services
 > are still planned. The build order is in
 > [docs/plan/PROJECT_PLAN.md](docs/plan/PROJECT_PLAN.md) and progress is tracked
 > in [CHANGELOG.md](CHANGELOG.md).
@@ -62,6 +63,7 @@ Requirements: Docker, [uv](https://docs.astral.sh/uv/), Python 3.12.
 cp .env.example .env     # choose database passwords; API keys are needed later
 uv sync                  # installs chatbot and the shared dev tools
 make up                  # starts Postgres and waits for its healthcheck
+docker compose run --rm migrate  # creates or updates the history tables
 make psql                # connects as the migration owner (\q to exit)
 make test-integration    # checks pgvector, authentication and database permissions
 make down                # stops containers; keeps the named database volume
@@ -82,7 +84,13 @@ initializes it again. `make down` preserves data.
 
 The read-only role has a five-second statement timeout and cannot create
 schemas, regular tables or temporary tables. Object grants will be added with
-the migrations in C05 and C10.
+the migrations in C10.
+
+The migration job uses the owner role and runs `alembic upgrade head` once.
+It can be run again safely when no new migrations exist. The initial revision
+creates `users`, `sessions`, `turns` and `messages`; see [db/README.md](db/README.md)
+for the schema, grants and downgrade command. If the host's port 5432 is in
+use, set `POSTGRES_PORT=55432` in `.env` before `make up` or Compose commands.
 
 From milestone M1 onward (commit C16 in the plan):
 

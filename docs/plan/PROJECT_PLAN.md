@@ -90,7 +90,7 @@ real tracing, before making any single layer good.
   binds `session_id`, `turn_id` and `trace_id` to every line. Typed errors.
 - **Done when:** `uv run pytest` passes and `python -c "import chatbot"` works.
 
-### [ ] C05 `feat(db): add migrations for users, sessions, turns and messages`
+### [x] C05 `feat(db): add migrations for users, sessions, turns and messages`
 
 - **Goal:** the history schema.
 - **Files:** `db/alembic.ini`, `db/migrations/`, a `migrate` service in compose.

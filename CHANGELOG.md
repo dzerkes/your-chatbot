@@ -10,13 +10,21 @@ All important changes to this project are recorded here, newest first.
 
 ## Unreleased
 
+### 2026-11-12
+
+| Plan id | Commit | Type | Change |
+|---|---|---|---|
+| C05 | Pending | Added | Alembic history migration for users, sessions, turns and JSONB messages, with keys, checks, indexes and cascading history cleanup. |
+| C05 | Pending | Security | Migration-owner connection and table-only read/write grants to `chatbot_app`; `chatbot_ro` has no history-table access. |
+| C05 | Pending | Added | One-shot Compose migration service and an isolated-database integration test covering upgrade, permissions, tool-call content and downgrade. |
+
 ### 2026-11-11
 
 | Plan id | Commit | Type | Change |
 |---|---|---|---|
-| C04 | Pending | Added | Installable `chatbot` workspace package with validated Pydantic settings, masked secrets, provider-neutral messages/content blocks, usage and streaming event types, and typed application errors. |
-| C04 | Pending | Added | Console and JSON logging with scoped session, turn and trace IDs, including isolation between concurrent tasks and restoration after errors. |
-| C04 | Pending | Added | Unit tests for settings precedence and validation, JSON round-trips, domain validation, errors and logging; package usage documentation. |
+| C04 | `17bf438` | Added | Installable `chatbot` workspace package with validated Pydantic settings, masked secrets, provider-neutral messages/content blocks, usage and streaming event types, and typed application errors. |
+| C04 | `17bf438` | Added | Console and JSON logging with scoped session, turn and trace IDs, including isolation between concurrent tasks and restoration after errors. |
+| C04 | `17bf438` | Added | Unit tests for settings precedence and validation, JSON round-trips, domain validation, errors and logging; package usage documentation. |
 | C03 | `89c6309` | Added | Docker Compose with pinned pgvector/Postgres 17 image, a persistent named volume, localhost port binding and a TCP healthcheck. |
 | C03 | `89c6309` | Security | Environment-driven owner, application and read-only logins, separate from the bootstrap superuser. Removed public database privileges and schema creation; read-only queries have a five-second statement timeout. |
 | C03 | `89c6309` | Added | Make targets for database lifecycle, psql, lint, unit tests and integration tests; configuration and database permission tests; uv lockfile for reproducible tooling. |
