@@ -14,9 +14,11 @@ All important changes to this project are recorded here, newest first.
 
 | Plan id | Commit | Type | Change |
 |---|---|---|---|
-| C11 | Pending | Added | Provider-neutral agent loop and streaming `respond()` with tool execution, error recovery, step limits, cumulative usage and atomic turn persistence. |
-| C11 | Pending | Added | Resource-owning `build_chatbot`, packaged system prompt and terminal CLI with one-shot questions and session resume. |
-| C11 | Pending | Added | Scripted conversation tests and a CLI integration test using the real seeded project tool and Postgres history. |
+| C12 | Pending | Added | Context builder interface, full-history and sliding-window strategies selected by settings, and replaceable input-token estimation covering system text, messages and tool schemas. |
+| C12 | Pending | Added | Agent rebuilds context before each provider call, evicts only whole stored turns, preserves current tool exchanges, and reports context overflow without changing saved history. |
+| C11 | `b99ea69` | Added | Provider-neutral agent loop and streaming `respond()` with tool execution, error recovery, step limits, cumulative usage and atomic turn persistence. |
+| C11 | `b99ea69` | Added | Resource-owning `build_chatbot`, packaged system prompt and terminal CLI with one-shot questions and session resume. |
+| C11 | `b99ea69` | Added | Scripted conversation tests and a CLI integration test using the real seeded project tool and Postgres history. |
 | C10 | `1483e1b` | Added | Raw client/project tables, curated views exposing approved columns, and an explicit repeatable `make seed` for synthetic demo data. |
 | C10 | `1483e1b` | Security | Read-only role gets SELECT on named curated views, without raw-table access or write grants; `query_projects` uses that role and parameterized filters. |
 | C10 | `1483e1b` | Added | Typed project query tool with status, client, start-date and text filters, stable pagination, and integration tests for seeding, queries, permissions and downgrade. |

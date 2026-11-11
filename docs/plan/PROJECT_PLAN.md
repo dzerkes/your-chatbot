@@ -172,7 +172,7 @@ real tracing, before making any single layer good.
   several tool calls, tool error, step limit. The CLI answers a question about
   the demo projects.
 
-### [ ] C12 `feat(context): add context builder with full and sliding-window strategies`
+### [x] C12 `feat(context): add context builder with full and sliding-window strategies`
 
 - **Goal:** separate what is stored from what the model sees.
 - **Files:** `chatbot/src/chatbot/context/{base,full,sliding_window,tokens}.py`.

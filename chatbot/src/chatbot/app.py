@@ -6,6 +6,7 @@ from importlib.resources import files
 
 from chatbot.agent import Agent
 from chatbot.config import Settings
+from chatbot.context import build_context_builder
 from chatbot.llm.registry import ProviderRegistry
 from chatbot.store.postgres import PostgresStore
 from chatbot.tools.query_projects import QueryProjects
@@ -14,6 +15,7 @@ from chatbot.tools.registry import ToolRegistry
 
 @asynccontextmanager
 async def build_chatbot(settings: Settings) -> AsyncIterator[Agent]:
+    context_builder = build_context_builder(settings)
     async with AsyncExitStack() as stack:
         provider = ProviderRegistry(settings).get_primary()
         stack.push_async_callback(provider.aclose)
@@ -22,4 +24,6 @@ async def build_chatbot(settings: Settings) -> AsyncIterator[Agent]:
         tools = ToolRegistry()
         tools.register(projects.tool())
         system = files("chatbot").joinpath("prompts/system.md").read_text(encoding="utf-8")
-        yield Agent(store, provider, tools, settings, system=system)
+        yield Agent(
+            store, provider, tools, settings, system=system, context_builder=context_builder
+        )

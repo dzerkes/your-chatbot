@@ -271,8 +271,8 @@ async def ask() -> None:
                     print(event.text, end="", flush=True)
 ```
 
-`respond(session_id, user_message, user)` checks ownership, loads history, calls
-the provider, runs all requested tools, and repeats until an answer or
+`respond(session_id, user_message, user)` checks ownership, loads history, builds
+model context, calls the provider, runs all requested tools, and repeats until an answer or
 `AGENT_MAX_STEPS` provider calls. Tool failures become `is_error` tool results
 that the model can use to correct its request. Events carry session, turn and
 trace IDs and include text deltas, tool start/finish, and one terminal completion
@@ -287,6 +287,38 @@ conflicts between separate instances.
 
 The composition root closes provider clients and both database pools on exit.
 For unit tests, construct `Agent` with `MemoryStore`, `ScriptedProvider` and a
-`ToolRegistry`. This commit sends full history; configurable context strategies
-arrive in C12. Cost fields remain zero until the pricing gateway in C25. Trace
+`ToolRegistry`. Cost fields remain zero until the pricing gateway in C25. Trace
 IDs currently provide log correlation; OpenTelemetry spans arrive in C13.
+
+## Model context
+
+`CONTEXT_STRATEGY` selects a builder in `chatbot.context`:
+
+| Strategy | History sent to the provider |
+|---|---|
+| `full` | All stored turns, plus the entire current turn. Overflow fails instead of trimming. |
+| `sliding_window` | Up to `CONTEXT_KEEP_LAST_TURNS` recent stored turns, plus the entire current turn. Oldest stored turns are removed further if needed to fit the budget. |
+
+The default is `sliding_window` with 10 stored turns. A turn includes its user
+message, every assistant/tool exchange, and its answer. The current turn remains
+intact across all agent steps. Builders reject incomplete tool exchanges and
+never retain a tool result without its call. They return copies of selected
+messages; persistence still receives every new message and keeps the full history.
+
+`CONTEXT_MAX_INPUT_TOKENS` limits estimated input size. The estimate includes
+the system prompt, message content, tool arguments/results, tool schemas and
+framing overhead. It excludes storage metadata such as timestamps and usage
+counters. If the system prompt, schemas and current turn alone exceed the budget,
+`respond()` saves a failed turn and emits `context_overflow` before another
+provider request. Context is rebuilt after every tool batch.
+
+`TokenCounter` is a small interface for replacing the default estimator.
+`ApproximateTokenCounter` uses UTF-8 byte counts and framing allowances, so it is
+a heuristic rather than a model tokenizer or a billing count. The input budget
+is separate from `LLM_MAX_OUTPUT_TOKENS`; actual usage still comes from the provider.
+Custom callers can pass a counter to `build_context_builder(settings, counter=...)`
+or pass a `context_builder` to `Agent`. `BuiltContext` exposes the selected
+messages, system prompt and estimated token count.
+
+The settings names `compact_tools` and `summary` are reserved for later commits;
+selecting either currently reports that the strategy is not implemented.

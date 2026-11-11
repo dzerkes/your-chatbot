@@ -7,7 +7,8 @@ tools, Postgres for history and memory, and tracing plus evals around all of it.
 > **Status:** Postgres with pgvector and Alembic migrations run locally. The
 > `chatbot` package provides settings, domain types, session/message stores,
 > Anthropic/OpenAI LLM adapters, and a terminal agent that queries synthetic
-> project data and saves conversations (C11). Web services are still planned.
+> project data and saves conversations, with configurable full or recent-turn
+> model context (C12). Web services are still planned.
 > The build order is in
 > [docs/plan/PROJECT_PLAN.md](docs/plan/PROJECT_PLAN.md) and progress is tracked
 > in [CHANGELOG.md](CHANGELOG.md).

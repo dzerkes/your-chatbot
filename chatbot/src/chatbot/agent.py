@@ -11,6 +11,8 @@ from uuid import UUID, uuid4
 from weakref import WeakValueDictionary
 
 from chatbot.config import Settings
+from chatbot.context import build_context_builder
+from chatbot.context.base import ContextBuilder
 from chatbot.errors import (
     ChatbotError,
     ContextOverflow,
@@ -66,12 +68,16 @@ class Agent:
         settings: Settings,
         *,
         system: str,
+        context_builder: ContextBuilder | None = None,
     ) -> None:
         self.store = store
         self.provider = provider
         self.tools = tools
         self.settings = settings
         self.system = system
+        self.context_builder = (
+            context_builder if context_builder is not None else build_context_builder(settings)
+        )
         self._locks: WeakValueDictionary[UUID, asyncio.Lock] = WeakValueDictionary()
 
     async def respond(
@@ -147,10 +153,14 @@ class Agent:
                 pending = []
                 step_usage = None
                 stop: LLMStop | None = None
+                definitions = self.tools.definitions()
+                built = self.context_builder.build(
+                    history, messages, system=self.system, tools=definitions
+                )
                 request = LLMRequest(
-                    system=self.system,
-                    messages=[*history, *messages],
-                    tools=self.tools.definitions(),
+                    system=built.system,
+                    messages=built.messages,
+                    tools=definitions,
                     max_output_tokens=self.settings.llm_max_output_tokens,
                     timeout_seconds=self.settings.llm_timeout_seconds,
                 )
