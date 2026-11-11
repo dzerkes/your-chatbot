@@ -2,7 +2,8 @@
 
 This package holds the application code shared by the future CLI, backend and
 eval runner. It has no FastAPI or Streamlit dependency. The store module uses
-psycopg for Postgres history persistence; the Anthropic adapter uses its SDK.
+psycopg for Postgres history persistence; the Anthropic and OpenAI adapters use
+their SDKs.
 The agent loop and `respond()` will be implemented in C11.
 
 ## Settings and logging
@@ -117,17 +118,17 @@ domain objects. `MemoryStore` makes copies so callers cannot mutate saved data.
 async stream. `LLMRequest` contains the system prompt, message history, tool
 definitions, output token limit and optional timeout. A stream yields text
 deltas and completed tool calls, followed by cumulative usage and a stop reason.
-The adapter converts Anthropic cache token counts into the shared `Usage` shape.
+The adapters convert provider token counts into the shared `Usage` shape.
 
 ```python
 from chatbot.config import Settings
-from chatbot.llm.anthropic import AnthropicProvider
 from chatbot.llm.base import LLMRequest, LLMTextDelta
+from chatbot.llm.registry import ProviderRegistry
 
 
 async def stream_reply(request: LLMRequest) -> None:
     settings = Settings()
-    provider = AnthropicProvider(settings.llm_primary.removeprefix("anthropic:"), settings)
+    provider = ProviderRegistry(settings).get_primary()
     try:
         async for event in provider.stream(request):
             if isinstance(event, LLMTextDelta):
@@ -136,8 +137,14 @@ async def stream_reply(request: LLMRequest) -> None:
         await provider.aclose()
 ```
 
+Set `LLM_PRIMARY=anthropic:claude-sonnet-5-5` with `ANTHROPIC_API_KEY`, or
+`LLM_PRIMARY=openai:gpt-5.5` with `OPENAI_API_KEY`. `ProviderRegistry.get(name)`
+also accepts an explicit `provider:model` name. Close the selected adapter after
+use. The OpenAI adapter uses the Responses API with `store=False`; tool errors
+are sent as JSON objects with an `error` field.
+
 `ScriptedProvider` accepts one sequence of events or exceptions per request and
-records copies of requests for assertions. It needs no API key. The adapter
-unit tests use recorded stream events. To run the live test, set
+records copies of requests for assertions. It needs no API key. Adapter unit
+tests use recorded stream events. To run the Anthropic live test, set
 `ANTHROPIC_API_KEY` and run `uv run pytest -m llm tests/test_llm_live.py`.
 The default pytest run excludes `llm` tests.

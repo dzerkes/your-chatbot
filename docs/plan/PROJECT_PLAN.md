@@ -124,7 +124,7 @@ real tracing, before making any single layer good.
 - **Done when:** adapter unit tests pass against recorded responses, and one
   `llm`-marked test streams from the real API.
 
-### [ ] C08 `feat(llm): add OpenAI adapter and provider registry`
+### [x] C08 `feat(llm): add OpenAI adapter and provider registry`
 
 - **Goal:** prove that a new SDK is one adapter and one registration.
 - **Files:** `chatbot/src/chatbot/llm/{openai,registry}.py`.

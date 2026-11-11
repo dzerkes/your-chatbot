@@ -14,8 +14,10 @@ All important changes to this project are recorded here, newest first.
 
 | Plan id | Commit | Type | Change |
 |---|---|---|---|
-| C07 | Pending | Added | Provider-neutral request, event and tool definitions, an Anthropic streaming adapter, and a deterministic scripted provider. |
-| C07 | Pending | Added | Recorded Anthropic stream tests and an opt-in `llm` test for a real API stream. |
+| C08 | Pending | Added | OpenAI Responses streaming adapter for text, function calls, usage and stop reasons; registry selects Anthropic or OpenAI from `LLM_PRIMARY`. |
+| C08 | Pending | Added | Shared text and tool contract tests for both adapters, OpenAI recorded streams and registry selection tests. |
+| C07 | `40184a7` | Added | Provider-neutral request, event and tool definitions, an Anthropic streaming adapter, and a deterministic scripted provider. |
+| C07 | `40184a7` | Added | Recorded Anthropic stream tests and an opt-in `llm` test for a real API stream. |
 | C06 | `be29dc4` | Added | `SessionStore` and `MessageStore` protocols, with async Postgres and in-memory implementations for users, sessions, turns and messages. |
 | C06 | `be29dc4` | Security | Session-owner scoping on history reads and turn writes; a failed message insert rolls back the entire turn. |
 | C06 | `be29dc4` | Added | Shared store contract tests, including an isolated Postgres round-trip of tool calls/results and rollback checks; `make migrate` prepares the schema for integration tests. |

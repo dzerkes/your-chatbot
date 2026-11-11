@@ -73,3 +73,7 @@ class LLMProvider(Protocol):
     def stream(self, request: LLMRequest) -> AsyncIterator[LLMEvent]:
         """Yield text and completed tool calls, then final usage and stop reason."""
         ...
+
+    async def aclose(self) -> None:
+        """Release resources owned by the provider."""
+        ...

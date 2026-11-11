@@ -13,6 +13,9 @@ class ScriptedProvider:
         self._scripts = [tuple(script) for script in scripts]
         self.requests: list[LLMRequest] = []
 
+    async def aclose(self) -> None:
+        pass
+
     async def stream(self, request: LLMRequest) -> AsyncIterator[LLMEvent]:
         if not self._scripts:
             raise ProviderError("No scripted response remains")
