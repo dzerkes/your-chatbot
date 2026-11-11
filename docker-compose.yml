@@ -1,0 +1,29 @@
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.2-pg17
+    environment:
+      # The image's bootstrap user is separate from the migration owner.
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:-${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}}
+      POSTGRES_DB: ${POSTGRES_DB:-chatbot}
+      OWNER_DB_USER: ${POSTGRES_USER:-chatbot_owner}
+      OWNER_DB_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      APP_DB_USER: ${APP_DB_USER:-chatbot_app}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?Set APP_DB_PASSWORD in .env}
+      RO_DB_USER: ${RO_DB_USER:-chatbot_ro}
+      RO_DB_PASSWORD: ${RO_DB_PASSWORD:?Set RO_DB_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # TCP is unavailable on the temporary server used during initialization.
+      test: ["CMD-SHELL", 'pg_isready -h 127.0.0.1 -U "$$OWNER_DB_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+volumes:
+  postgres_data:

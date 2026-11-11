@@ -65,7 +65,7 @@ affecting the commits before them.
 The aim is the thinnest slice through every layer, with real persistence and
 real tracing, before making any single layer good.
 
-### [ ] C03 `feat(infra): add docker compose with Postgres and pgvector`
+### [x] C03 `feat(infra): add docker compose with Postgres and pgvector`
 
 - **Goal:** one command starts the database with the three roles.
 - **Files:** `docker-compose.yml`, `db/init/01_roles.sql`, `Makefile`
@@ -73,7 +73,9 @@ real tracing, before making any single layer good.
 - **Details:** `pgvector/pgvector` image, named volume, healthcheck. The init
   script creates `chatbot_owner`, `chatbot_app` and `chatbot_ro` from the
   environment and enables the `vector` extension. `chatbot_ro` gets a statement
-  timeout.
+  timeout. The three application roles are non-superusers; the image uses a
+  separate `postgres` bootstrap superuser. Integration tests in
+  `tests/test_infra.py` check authentication, pgvector and permissions.
 - **Done when:** `make up` then `make psql` connects, and `chatbot_ro` cannot
   create a table.
 

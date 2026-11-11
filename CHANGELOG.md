@@ -10,6 +10,15 @@ All important changes to this project are recorded here, newest first.
 
 ## Unreleased
 
+### 2026-11-11
+
+| Plan id | Commit | Type | Change |
+|---|---|---|---|
+| C03 | Pending | Added | Docker Compose with pinned pgvector/Postgres 17 image, a persistent named volume, localhost port binding and a TCP healthcheck. |
+| C03 | Pending | Security | Environment-driven owner, application and read-only logins, separate from the bootstrap superuser. Removed public database privileges and schema creation; read-only queries have a five-second statement timeout. |
+| C03 | Pending | Added | Make targets for database lifecycle, psql, lint, unit tests and integration tests; configuration and database permission tests; uv lockfile for reproducible tooling. |
+| C03 | Pending | Changed | Getting-started instructions explain database initialization, credentials, persistence and volume reset. |
+
 ### 2026-11-10
 
 | Plan id | Commit | Type | Change |
