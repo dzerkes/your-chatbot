@@ -4,8 +4,9 @@ A proof of concept for a chatbot that answers questions from company data. It is
 built as a complete, small system: a chat UI, a thin API, an agent loop with
 tools, Postgres for history and memory, and tracing plus evals around all of it.
 
-> **Status:** C03 adds a runnable Postgres database with pgvector and three
-> application roles. The chatbot services are still planned. The build order is in
+> **Status:** Postgres with pgvector runs locally, and the `chatbot` package
+> provides settings, logging and domain types (C04). The agent and web services
+> are still planned. The build order is in
 > [docs/plan/PROJECT_PLAN.md](docs/plan/PROJECT_PLAN.md) and progress is tracked
 > in [CHANGELOG.md](CHANGELOG.md).
 
@@ -59,7 +60,7 @@ Requirements: Docker, [uv](https://docs.astral.sh/uv/), Python 3.12.
 
 ```bash
 cp .env.example .env     # choose database passwords; API keys are needed later
-uv sync                  # installs the shared dev tools
+uv sync                  # installs chatbot and the shared dev tools
 make up                  # starts Postgres and waits for its healthcheck
 make psql                # connects as the migration owner (\q to exit)
 make test-integration    # checks pgvector, authentication and database permissions
@@ -98,6 +99,21 @@ uv run mypy .            # types
 make test                # unit tests (no network, no database)
 make test-integration    # starts Postgres, then runs integration tests
 ```
+
+The `chatbot` package is installed in editable mode by `uv sync`, so source
+changes are available immediately. Check the import with:
+
+```bash
+uv run python -c "import chatbot; print(chatbot.__file__)"
+```
+
+Application code loads configuration explicitly with `Settings()` from
+`chatbot.config`. Values resolve from constructor arguments, then environment
+variables, then `.env` in the working directory, then defaults. Blank environment
+values use defaults; secrets are masked when settings are printed. API keys
+are optional until a provider is used. The `.env` file is not loaded on import.
+
+See [chatbot/README.md](chatbot/README.md) for the core types and logging API.
 
 ## Documentation
 

@@ -79,7 +79,7 @@ real tracing, before making any single layer good.
 - **Done when:** `make up` then `make psql` connects, and `chatbot_ro` cannot
   create a table.
 
-### [ ] C04 `feat(chatbot): add package skeleton with settings, logging and domain types`
+### [x] C04 `feat(chatbot): add package skeleton with settings, logging and domain types`
 
 - **Goal:** an installable `chatbot` package with the shared vocabulary.
 - **Files:** `chatbot/pyproject.toml`, `chatbot/src/chatbot/{config,logging,errors,types}.py`,

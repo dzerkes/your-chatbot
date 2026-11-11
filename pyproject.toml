@@ -24,10 +24,14 @@ package = false
 #   "frontend"     C15  Streamlit app, talks to the backend over HTTP only
 #   "mcp_servers"  C22  tools exposed over MCP
 #   "evals"        C29  eval datasets and runner
-members = []
+members = ["chatbot"]
+
+[tool.uv.sources]
+chatbot = { workspace = true }
 
 [dependency-groups]
 dev = [
+    "chatbot",
     "ruff>=0.6",
     "mypy>=1.11",
     "pytest>=8",
@@ -52,6 +56,7 @@ select = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 addopts = "-ra --strict-markers"
 markers = [
     "unit: fast, no network, no database (default)",

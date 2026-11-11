@@ -1,0 +1,16 @@
+[build-system]
+requires = ["hatchling>=1.26,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "chatbot"
+version = "0.1.0"
+description = "Provider-neutral chatbot core, independent of the web layer."
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.9,<3",
+    "pydantic-settings>=2.7,<3",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/chatbot"]
