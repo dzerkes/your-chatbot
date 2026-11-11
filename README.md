@@ -6,7 +6,8 @@ tools, Postgres for history and memory, and tracing plus evals around all of it.
 
 > **Status:** Postgres with pgvector and Alembic migrations run locally. The
 > `chatbot` package provides settings, domain types, session/message stores,
-> Anthropic/OpenAI LLM adapters, and typed tools with bounded pagination (C09).
+> Anthropic/OpenAI LLM adapters, and a read-only project query tool over
+> synthetic company data (C10).
 > The agent and web services
 > are still planned. The build order is in
 > [docs/plan/PROJECT_PLAN.md](docs/plan/PROJECT_PLAN.md) and progress is tracked
@@ -65,6 +66,7 @@ cp .env.example .env     # choose database passwords; API keys are needed later
 uv sync                  # installs chatbot and the shared dev tools
 make up                  # starts Postgres and waits for its healthcheck
 make migrate             # creates or updates the history tables
+make seed                # loads synthetic clients and projects (repeatable)
 make psql                # connects as the migration owner (\q to exit)
 make test-integration    # starts Postgres, migrates, then runs integration tests
 make down                # stops containers; keeps the named database volume
@@ -84,8 +86,8 @@ credential changes with `ALTER ROLE`, or, for a disposable local database,
 initializes it again. `make down` preserves data.
 
 The read-only role has a five-second statement timeout and cannot create
-schemas, regular tables or temporary tables. Object grants will be added with
-the migrations in C10.
+schemas, regular tables or temporary tables. It can select approved fields
+through `curated.clients` and `curated.projects`, with no access to `raw` tables.
 
 The migration job uses the owner role and runs `alembic upgrade head` once.
 It can be run again safely when no new migrations exist. The initial revision

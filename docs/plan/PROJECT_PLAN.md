@@ -146,7 +146,7 @@ real tracing, before making any single layer good.
 - **Done when:** a toy tool is registered, its schema is generated, and
   pagination tests pass.
 
-### [ ] C10 `feat(data): add demo dataset, curated views and the query_projects tool`
+### [x] C10 `feat(data): add demo dataset, curated views and the query_projects tool`
 
 - **Goal:** the first real tool, with database-enforced read-only access.
 - **Files:** `db/migrations/` (schemas `raw` and `curated`), `db/seed/`,

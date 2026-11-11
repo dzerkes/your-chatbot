@@ -73,6 +73,14 @@ def test_history_migration_and_permissions() -> None:
             "-e",
             f"POSTGRES_DB={database}",
             "migrate",
+            "uv",
+            "run",
+            "--locked",
+            "alembic",
+            "-c",
+            "db/alembic.ini",
+            "upgrade",
+            "20261112_01_history",
             timeout=180,
         )
         assert upgraded.returncode == 0, upgraded.stderr

@@ -38,6 +38,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-chatbot_owner}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       APP_DB_USER: ${APP_DB_USER:-chatbot_app}
+      RO_DB_USER: ${RO_DB_USER:-chatbot_ro}
     volumes:
       - ./:/workspace:ro
       - uv_cache:/root/.cache/uv

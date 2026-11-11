@@ -196,3 +196,40 @@ Cursors use versioned offsets, so tools must supply a stable ordering. Pass a
 stable `scope` representing the user and filters to detect reuse with a different
 query. Cursors are pagination hints; tools enforce access on every call. Offset
 pagination can shift when the underlying data changes between requests.
+
+## Project queries
+
+Run `make seed` to load the synthetic company dataset. `QueryProjects` owns a
+separate connection pool using `RO_DB_USER` / `RO_DB_PASSWORD` and reads only
+`curated.projects`. Register its tool while the pool is open:
+
+```python
+from chatbot.config import Settings
+from chatbot.tools.query_projects import QueryProjects
+from chatbot.tools.registry import ToolRegistry
+
+
+async def project_tool_example() -> None:
+    async with QueryProjects(Settings()) as projects:
+        registry = ToolRegistry()
+        registry.register(projects.tool())
+        definitions = registry.definitions()
+```
+
+The tool accepts `status`, exact `client_id`, a `client` name substring,
+`start_date_from` / `start_date_to` (inclusive project start dates), and `text`
+matching the project name or description. Substring matching ignores case and
+treats `%` and `_` literally. Filters combine with AND. Pagination uses the
+standard nested `pagination` input, for example:
+
+```json
+{"status": "active", "client": "Northstar", "pagination": {"limit": 5}}
+```
+
+Results are ordered by project ID and contain the approved columns documented
+in [db/README.md](../db/README.md). Dates are ISO strings; an unknown end date
+is null. Count and page queries use one read-only repeatable-read transaction.
+All filter values are SQL parameters. Cursors are scoped to the caller and
+filters; send the same filters with `next_cursor` to fetch the next page.
+All approved demo projects are visible to every caller; this tool currently
+has no per-user row restrictions.

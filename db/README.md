@@ -1,4 +1,4 @@
-# Database migrations
+# Database migrations and demo data
 
 The database roles and pgvector extension are initialized by `db/init/01_roles.sql`
 when Postgres starts with an empty volume. Alembic handles versioned application
@@ -47,8 +47,44 @@ when it updates session metadata or saves a turn.
 
 `chatbot_app` can select, insert, update and delete rows in those four tables.
 It cannot alter the schema or read Alembic's version table. `chatbot_ro` has no
-history-table privileges. Future migrations grant access to other objects as
-they introduce them.
+history-table privileges.
+
+## Company data and curated views
+
+The C10 revision creates `raw.clients` and `raw.projects`. Raw data includes
+synthetic contact emails, budgets and internal notes. The views expose only:
+
+| View | Approved columns |
+|---|---|
+| `curated.clients` | `id`, `name` |
+| `curated.projects` | `id`, `name`, `description`, `status`, `start_date`, `end_date`, `client_id`, `client_name` |
+
+The migration owner owns both schemas and their objects. The configured
+`RO_DB_USER` gets schema usage and `SELECT` on those two views, with no grants
+on raw tables or history. Views use the owner's permissions to read their base
+tables. The application role has no company-data grants; the tool opens a
+separate pool with the read-only credentials. Grants name specific views so
+new objects require an explicit decision.
+
+Load the synthetic dataset explicitly:
+
+```bash
+make seed                 # migrate, then load 4 clients and 12 projects as owner
+```
+
+`db/seed/01_demo.sql` runs in one transaction. It uses fixed IDs and skips
+existing IDs, so running it again adds no duplicates and preserves local edits.
+Migrations never load demo rows automatically. Statuses are `planned`, `active`,
+`on_hold`, `completed` and `cancelled`; dates are fixed so examples remain
+reproducible.
+
+To remove the company-data schemas while keeping chat history:
+
+```bash
+docker compose run --rm migrate uv run --locked alembic -c db/alembic.ini downgrade 20261112_01_history
+```
+
+This deletes all raw clients/projects, including local additions and demo rows.
 
 To remove the history tables in a disposable database, run:
 
@@ -56,6 +92,6 @@ To remove the history tables in a disposable database, run:
 docker compose run --rm migrate uv run --locked alembic -c db/alembic.ini downgrade base
 ```
 
-This deletes all users, sessions, turns and messages. The integration test uses
-a separate temporary database for upgrade/downgrade checks and deletes it after
-the test, leaving the project's development data alone.
+Downgrading to `base` deletes company data as well as all users, sessions, turns
+and messages. Integration tests use temporary databases for migrations, seed
+idempotency, tool queries and permission checks, then delete those databases.
