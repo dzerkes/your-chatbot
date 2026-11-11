@@ -21,9 +21,12 @@ from chatbot.tools.pagination import ToolPage
 from chatbot.tools.query_projects import QueryProjects
 from chatbot.tools.registry import ToolRegistry
 from chatbot.types import ToolResult, ToolUse, Usage, User
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from psycopg import errors, sql
 from psycopg.conninfo import make_conninfo
-from pydantic import JsonValue
+from pydantic import JsonValue, SecretStr
+
+from chatbot import tracing as tracing_module
 
 pytestmark = pytest.mark.integration
 ROOT = Path(__file__).resolve().parents[1]
@@ -251,9 +254,28 @@ async def test_project_tool_filters_pagination_and_injection(project_database: S
             await query({"status": "completed", "pagination": {"cursor": first.next_cursor}})
 
 
+@pytest.mark.parametrize("enable_tracing", [False, True])
 async def test_cli_demo_query_and_session_resume(
-    project_database: Settings, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    project_database: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    enable_tracing: bool,
 ) -> None:
+    exporters: list[InMemorySpanExporter] = []
+
+    def exporter(**kwargs: object) -> InMemorySpanExporter:
+        result = InMemorySpanExporter()
+        exporters.append(result)
+        return result
+
+    monkeypatch.setattr(tracing_module, "OTLPSpanExporter", exporter)
+    settings = project_database.model_copy(
+        update={
+            "tracing_enabled": enable_tracing,
+            "langfuse_public_key": SecretStr("pk-test"),
+            "langfuse_secret_key": SecretStr("sk-test"),
+        }
+    )
     provider = ScriptedProvider(
         [
             [
@@ -286,7 +308,7 @@ async def test_cli_demo_query_and_session_resume(
         session=None,
         prompt="Which Northstar projects are active?",
     )
-    assert await asyncio.to_thread(chat, args, project_database) == 0
+    assert await asyncio.to_thread(chat, args, settings) == 0
     captured = capsys.readouterr()
     assert "Research Portal" in captured.out
     assert "[tool: query_projects]" in captured.err
@@ -301,8 +323,17 @@ async def test_cli_demo_query_and_session_resume(
         assert "Research Portal" in str(result.content["items"])
         turn = (await store.list_turns(session.id, user.id))[0]
         assert turn.status == "completed" and turn.input_tokens == 30 and turn.output_tokens == 10
+        if enable_tracing:
+            spans = exporters[0].get_finished_spans()
+            assert len(spans) == 5
+            for span in spans:
+                span_context = span.get_span_context()
+                assert span_context is not None
+                assert format(span_context.trace_id, "032x") == turn.trace_id
+                assert (span.attributes or {})["session.id"] == str(session.id)
         args.session = session.id
     args.prompt = "When does it start?"
-    assert await asyncio.to_thread(chat, args, project_database) == 0
+    assert await asyncio.to_thread(chat, args, settings) == 0
     assert "2026-01-15" in capsys.readouterr().out
     assert len(provider.requests[2].messages) == 5
+    assert len(exporters) == (2 if enable_tracing else 0)

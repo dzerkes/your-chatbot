@@ -287,8 +287,7 @@ conflicts between separate instances.
 
 The composition root closes provider clients and both database pools on exit.
 For unit tests, construct `Agent` with `MemoryStore`, `ScriptedProvider` and a
-`ToolRegistry`. Cost fields remain zero until the pricing gateway in C25. Trace
-IDs currently provide log correlation; OpenTelemetry spans arrive in C13.
+`ToolRegistry`. Cost fields remain zero until the pricing gateway in C25.
 
 ## Model context
 
@@ -322,3 +321,45 @@ messages, system prompt and estimated token count.
 
 The settings names `compact_tools` and `summary` are reserved for later commits;
 selecting either currently reports that the strategy is not implemented.
+
+## Tracing to Langfuse
+
+Enable tracing in `.env` with your Langfuse project's API keys:
+
+```dotenv
+TRACING_ENABLED=true
+LANGFUSE_HOST=https://cloud.langfuse.com
+LANGFUSE_PUBLIC_KEY=your-public-key
+LANGFUSE_SECRET_KEY=your-secret-key
+```
+
+Use the base URL for your Langfuse region or self-hosted instance. The exporter
+sends OTLP/HTTP protobuf to `/api/public/otel/v1/traces` with Basic authentication
+and the v4 ingestion header, following the
+[Langfuse OpenTelemetry integration](https://langfuse.com/integrations/native/opentelemetry).
+
+Each call to `respond()` creates a trace containing a `session` root and a
+`turn` child. LLM generations and tool executions are children of the turn.
+The session UUID and internal user UUID are attached to every span, so separate
+turn traces appear together in Langfuse's session view. The OpenTelemetry trace
+ID is saved on the turn and included in streamed events and logs.
+
+Generation spans include provider/model, input/output/cache token counts,
+stop reason, latency and time to first text. Tool spans include arguments,
+result size, latency and error status. Cached tokens are represented as
+exclusive usage categories in Langfuse to avoid double counting. Generation
+cost attributes currently carry `chatbot.cost_usd=0` and
+`chatbot.cost_calculated=false`; local pricing arrives in C25.
+
+`build_chatbot` owns a private tracer provider and batch exporter. It closes
+clients and pools, then drains the exporter on exit; it leaves the process's
+global tracer provider under the application's control. With
+`TRACING_ENABLED=false`, no exporter or telemetry worker is created. Existing
+local correlation IDs continue to appear in events and logs.
+
+Tests can inject `Tracing(provider)` into `Agent` with an OpenTelemetry
+in-memory exporter. Directly constructed agents default to disabled tracing;
+the composition root selects production tracing from settings. Tracing tests
+cover parentage, usage, errors, interruption, concurrent session isolation and
+shutdown flushing. Database integration checks exercise CLI chat and resume
+with tracing enabled and disabled using an in-memory export destination.

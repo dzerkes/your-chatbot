@@ -8,7 +8,7 @@ tools, Postgres for history and memory, and tracing plus evals around all of it.
 > `chatbot` package provides settings, domain types, session/message stores,
 > Anthropic/OpenAI LLM adapters, and a terminal agent that queries synthetic
 > project data and saves conversations, with configurable full or recent-turn
-> model context (C12). Web services are still planned.
+> model context and OpenTelemetry tracing to Langfuse (C13). Web services are still planned.
 > The build order is in
 > [docs/plan/PROJECT_PLAN.md](docs/plan/PROJECT_PLAN.md) and progress is tracked
 > in [CHANGELOG.md](CHANGELOG.md).
@@ -83,6 +83,10 @@ uv run python -m chatbot.cli chat --user alice --prompt "Which Northstar project
 Use `--session SESSION_UUID` with the same user to resume a conversation.
 Interactive chat exits with `/quit` or `/exit`. See [chatbot/README.md](chatbot/README.md)
 for the streaming `respond()` interface and lifecycle.
+
+To trace CLI conversations, set `TRACING_ENABLED=true` and the Langfuse project
+keys in `.env`. Traces are grouped by session; see the
+[tracing setup](chatbot/README.md#tracing-to-langfuse) for attributes and export behavior.
 
 Postgres is available on `127.0.0.1:5432` (override `POSTGRES_PORT` in `.env`).
 `POSTGRES_USER` names the migration owner; `APP_DB_USER` and `RO_DB_USER` name

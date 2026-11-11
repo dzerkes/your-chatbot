@@ -14,8 +14,11 @@ All important changes to this project are recorded here, newest first.
 
 | Plan id | Commit | Type | Change |
 |---|---|---|---|
-| C12 | Pending | Added | Context builder interface, full-history and sliding-window strategies selected by settings, and replaceable input-token estimation covering system text, messages and tool schemas. |
-| C12 | Pending | Added | Agent rebuilds context before each provider call, evicts only whole stored turns, preserves current tool exchanges, and reports context overflow without changing saved history. |
+| C13 | Pending | Added | Private OpenTelemetry tracer provider and Langfuse OTLP/HTTP batch export, with no telemetry setup when tracing is disabled and exporter draining on application exit. |
+| C13 | Pending | Added | Session/turn/LLM/tool span hierarchy, persisted OpenTelemetry trace IDs, model and cache usage, timings, tool arguments/result sizes and error status. Cost attributes remain marked uncalculated until C25. |
+| C13 | Pending | Added | In-memory tracing tests, CLI integration checks for enabled/disabled export, and a live scripted CLI trace verified through Langfuse's observations and session APIs. |
+| C12 | `8c13924` | Added | Context builder interface, full-history and sliding-window strategies selected by settings, and replaceable input-token estimation covering system text, messages and tool schemas. |
+| C12 | `8c13924` | Added | Agent rebuilds context before each provider call, evicts only whole stored turns, preserves current tool exchanges, and reports context overflow without changing saved history. |
 | C11 | `b99ea69` | Added | Provider-neutral agent loop and streaming `respond()` with tool execution, error recovery, step limits, cumulative usage and atomic turn persistence. |
 | C11 | `b99ea69` | Added | Resource-owning `build_chatbot`, packaged system prompt and terminal CLI with one-shot questions and session resume. |
 | C11 | `b99ea69` | Added | Scripted conversation tests and a CLI integration test using the real seeded project tool and Postgres history. |

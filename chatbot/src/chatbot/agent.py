@@ -34,6 +34,7 @@ from chatbot.logging import log_context
 from chatbot.store.base import HistoryStore, Turn
 from chatbot.tools.base import ToolContext
 from chatbot.tools.registry import ToolRegistry
+from chatbot.tracing import Tracing
 from chatbot.types import (
     ContentBlock,
     Event,
@@ -69,9 +70,11 @@ class Agent:
         *,
         system: str,
         context_builder: ContextBuilder | None = None,
+        tracing: Tracing | None = None,
     ) -> None:
         self.store = store
-        self.provider = provider
+        self.tracing = tracing if tracing is not None else Tracing()
+        self.provider = self.tracing.wrap_provider(provider)
         self.tools = tools
         self.settings = settings
         self.system = system
@@ -87,9 +90,24 @@ class Agent:
         lock = self._locks.setdefault(session_id, asyncio.Lock())
         async with lock:
             turn = Turn(session_id=session_id, trace_id=uuid4().hex)
-            with log_context(session_id=session_id, turn_id=turn.id, trace_id=turn.trace_id):
+            with (
+                self.tracing.turn(turn, user) as span,
+                log_context(session_id=session_id, turn_id=turn.id, trace_id=turn.trace_id),
+            ):
                 async with aclosing(self._respond(turn, user_message, user)) as events:
                     async for event in events:
+                        if isinstance(event, TurnFailed):
+                            span.set({"chatbot.turn.status": "failed"})
+                            span.error(event.message, event.code)
+                        elif isinstance(event, TurnCompleted):
+                            span.set(
+                                {
+                                    "chatbot.turn.status": "completed",
+                                    "chatbot.usage.input_tokens": event.usage.input_tokens,
+                                    "chatbot.usage.output_tokens": event.usage.output_tokens,
+                                    "chatbot.cost_usd": float(event.cost_usd),
+                                }
+                            )
                         yield event
 
     async def _respond(self, turn: Turn, text: str, user: User) -> AsyncGenerator[Event, None]:
@@ -222,7 +240,7 @@ class Agent:
                 for call in calls:
                     yield ToolCallStarted(**ids, tool_use=call)
                     try:
-                        result = await self.tools.execute(call, context)
+                        result = await self.tracing.execute_tool(self.tools, call, context)
                     except ToolError as exc:
                         result = ToolResult(
                             tool_use_id=call.id,

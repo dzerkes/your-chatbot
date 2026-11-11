@@ -11,12 +11,15 @@ from chatbot.llm.registry import ProviderRegistry
 from chatbot.store.postgres import PostgresStore
 from chatbot.tools.query_projects import QueryProjects
 from chatbot.tools.registry import ToolRegistry
+from chatbot.tracing import Tracing
 
 
 @asynccontextmanager
 async def build_chatbot(settings: Settings) -> AsyncIterator[Agent]:
     context_builder = build_context_builder(settings)
     async with AsyncExitStack() as stack:
+        tracing = Tracing.from_settings(settings)
+        stack.push_async_callback(tracing.aclose)
         provider = ProviderRegistry(settings).get_primary()
         stack.push_async_callback(provider.aclose)
         store = await stack.enter_async_context(PostgresStore(settings))
@@ -25,5 +28,11 @@ async def build_chatbot(settings: Settings) -> AsyncIterator[Agent]:
         tools.register(projects.tool())
         system = files("chatbot").joinpath("prompts/system.md").read_text(encoding="utf-8")
         yield Agent(
-            store, provider, tools, settings, system=system, context_builder=context_builder
+            store,
+            provider,
+            tools,
+            settings,
+            system=system,
+            context_builder=context_builder,
+            tracing=tracing,
         )

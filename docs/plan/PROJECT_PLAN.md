@@ -182,7 +182,7 @@ real tracing, before making any single layer good.
 - **Done when:** tests show the window keeps the last N turns, keeps tool
   pairs intact, and `CONTEXT_STRATEGY` selects the strategy.
 
-### [ ] C13 `feat(tracing): add OpenTelemetry spans exported to Langfuse`
+### [x] C13 `feat(tracing): add OpenTelemetry spans exported to Langfuse`
 
 - **Goal:** every turn is visible as a trace.
 - **Files:** `chatbot/src/chatbot/tracing.py`, small hooks in the agent,
