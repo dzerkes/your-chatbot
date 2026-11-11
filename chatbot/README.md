@@ -4,7 +4,7 @@ This package holds the application code shared by the future CLI, backend and
 eval runner. It has no FastAPI or Streamlit dependency. The store module uses
 psycopg for Postgres history persistence; the Anthropic and OpenAI adapters use
 their SDKs.
-The agent loop and `respond()` will be implemented in C11.
+`build_chatbot(settings)` assembles the agent, history store, provider and tools.
 
 ## Settings and logging
 
@@ -233,3 +233,60 @@ All filter values are SQL parameters. Cursors are scoped to the caller and
 filters; send the same filters with `next_cursor` to fetch the next page.
 All approved demo projects are visible to every caller; this tool currently
 has no per-user row restrictions.
+
+## Agent and terminal chat
+
+Configure the selected provider's API key, run `make seed`, then start the CLI:
+
+```bash
+uv run python -m chatbot.cli chat --user alice
+uv run python -m chatbot.cli chat --user alice --prompt "Which projects are active?"
+uv run python -m chatbot.cli chat --user alice --session SESSION_UUID
+```
+
+The CLI prints the session UUID to stderr. Reuse it with the same `--user` to
+resume a conversation. Enter `/quit`, `/exit` or EOF to leave interactive chat.
+`--prompt` streams one reply to stdout, then exits with status 0 on success or
+1 on failure. The CLI user option selects a local development identity.
+
+Application code uses the same interface:
+
+```python
+from contextlib import aclosing
+
+from chatbot.app import build_chatbot
+from chatbot.config import Settings
+from chatbot.types import TextDelta, User
+
+
+async def ask() -> None:
+    async with build_chatbot(Settings()) as chatbot:
+        user = await chatbot.store.upsert_user(User(external_id="alice", display_name="Alice"))
+        session = await chatbot.store.create_session(user.id)
+        async with aclosing(
+            chatbot.respond(session.id, "Which projects are active?", user)
+        ) as events:
+            async for event in events:
+                if isinstance(event, TextDelta):
+                    print(event.text, end="", flush=True)
+```
+
+`respond(session_id, user_message, user)` checks ownership, loads history, calls
+the provider, runs all requested tools, and repeats until an answer or
+`AGENT_MAX_STEPS` provider calls. Tool failures become `is_error` tool results
+that the model can use to correct its request. Events carry session, turn and
+trace IDs and include text deltas, tool start/finish, and one terminal completion
+or failure event. Usage is summed across provider calls.
+
+New messages and the completed/failed turn are saved together before a terminal
+event is emitted. Failed streams retain partial text; interrupted tool batches
+get error results for unfinished calls so future history stays paired. Consume
+the stream fully or close it with `aclosing` on early exit. Calls for one session
+are serialized within an agent instance; database sequence constraints detect
+conflicts between separate instances.
+
+The composition root closes provider clients and both database pools on exit.
+For unit tests, construct `Agent` with `MemoryStore`, `ScriptedProvider` and a
+`ToolRegistry`. This commit sends full history; configurable context strategies
+arrive in C12. Cost fields remain zero until the pricing gateway in C25. Trace
+IDs currently provide log correlation; OpenTelemetry spans arrive in C13.

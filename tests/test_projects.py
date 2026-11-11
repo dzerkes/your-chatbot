@@ -1,5 +1,7 @@
 """Real project queries and grants in an isolated, seeded database."""
 
+import argparse
+import asyncio
 import subprocess
 from collections.abc import Iterator
 from pathlib import Path
@@ -7,13 +9,18 @@ from uuid import uuid4
 
 import psycopg
 import pytest
+from chatbot.cli import chat
 from chatbot.config import Settings
 from chatbot.errors import ToolError
+from chatbot.llm.base import LLMStop, LLMTextDelta, LLMToolCall, LLMUsage
+from chatbot.llm.fake import ScriptedProvider
+from chatbot.llm.registry import ProviderRegistry
+from chatbot.store.postgres import PostgresStore
 from chatbot.tools.base import ToolContext
 from chatbot.tools.pagination import ToolPage
 from chatbot.tools.query_projects import QueryProjects
 from chatbot.tools.registry import ToolRegistry
-from chatbot.types import ToolUse, User
+from chatbot.types import ToolResult, ToolUse, Usage, User
 from psycopg import errors, sql
 from psycopg.conninfo import make_conninfo
 from pydantic import JsonValue
@@ -242,3 +249,60 @@ async def test_project_tool_filters_pagination_and_injection(project_database: S
         assert (await query({})).total == 12
         with pytest.raises(ToolError, match="cursor"):
             await query({"status": "completed", "pagination": {"cursor": first.next_cursor}})
+
+
+async def test_cli_demo_query_and_session_resume(
+    project_database: Settings, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    provider = ScriptedProvider(
+        [
+            [
+                LLMToolCall(
+                    tool_use=ToolUse(
+                        id="projects-cli",
+                        name="query_projects",
+                        arguments={"status": "active", "client": "Northstar"},
+                    )
+                ),
+                LLMUsage(usage=Usage(input_tokens=10, output_tokens=2)),
+                LLMStop(reason="tool_use"),
+            ],
+            [
+                LLMTextDelta(text="Research Portal is Northstar Labs' active project."),
+                LLMUsage(usage=Usage(input_tokens=20, output_tokens=8)),
+                LLMStop(reason="end_turn"),
+            ],
+            [
+                LLMTextDelta(text="The project starts on 2026-01-15."),
+                LLMUsage(usage=Usage()),
+                LLMStop(reason="end_turn"),
+            ],
+        ]
+    )
+    monkeypatch.setattr(ProviderRegistry, "get_primary", lambda self: provider)
+    args = argparse.Namespace(
+        user="c11-cli",
+        display_name="CLI User",
+        session=None,
+        prompt="Which Northstar projects are active?",
+    )
+    assert await asyncio.to_thread(chat, args, project_database) == 0
+    captured = capsys.readouterr()
+    assert "Research Portal" in captured.out
+    assert "[tool: query_projects]" in captured.err
+    async with PostgresStore(project_database) as store:
+        user = await store.upsert_user(User(external_id="c11-cli", display_name="CLI User"))
+        session = (await store.list_sessions(user.id))[0]
+        messages = await store.list_messages(session.id, user.id)
+        assert [message.role for message in messages] == ["user", "assistant", "tool", "assistant"]
+        result = messages[2].content[0]
+        assert isinstance(result, ToolResult) and isinstance(result.content, dict)
+        assert result.content["total"] == 1
+        assert "Research Portal" in str(result.content["items"])
+        turn = (await store.list_turns(session.id, user.id))[0]
+        assert turn.status == "completed" and turn.input_tokens == 30 and turn.output_tokens == 10
+        args.session = session.id
+    args.prompt = "When does it start?"
+    assert await asyncio.to_thread(chat, args, project_database) == 0
+    assert "2026-01-15" in capsys.readouterr().out
+    assert len(provider.requests[2].messages) == 5

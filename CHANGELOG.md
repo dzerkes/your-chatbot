@@ -14,9 +14,12 @@ All important changes to this project are recorded here, newest first.
 
 | Plan id | Commit | Type | Change |
 |---|---|---|---|
-| C10 | Pending | Added | Raw client/project tables, curated views exposing approved columns, and an explicit repeatable `make seed` for synthetic demo data. |
-| C10 | Pending | Security | Read-only role gets SELECT on named curated views, without raw-table access or write grants; `query_projects` uses that role and parameterized filters. |
-| C10 | Pending | Added | Typed project query tool with status, client, start-date and text filters, stable pagination, and integration tests for seeding, queries, permissions and downgrade. |
+| C11 | Pending | Added | Provider-neutral agent loop and streaming `respond()` with tool execution, error recovery, step limits, cumulative usage and atomic turn persistence. |
+| C11 | Pending | Added | Resource-owning `build_chatbot`, packaged system prompt and terminal CLI with one-shot questions and session resume. |
+| C11 | Pending | Added | Scripted conversation tests and a CLI integration test using the real seeded project tool and Postgres history. |
+| C10 | `1483e1b` | Added | Raw client/project tables, curated views exposing approved columns, and an explicit repeatable `make seed` for synthetic demo data. |
+| C10 | `1483e1b` | Security | Read-only role gets SELECT on named curated views, without raw-table access or write grants; `query_projects` uses that role and parameterized filters. |
+| C10 | `1483e1b` | Added | Typed project query tool with status, client, start-date and text filters, stable pagination, and integration tests for seeding, queries, permissions and downgrade. |
 | C09 | `078b182` | Added | Typed async tools, Pydantic input schemas, a tool registry, server-supplied identity and trace context, and dispatch to provider-neutral tool results. |
 | C09 | `078b182` | Added | Paginated JSON result envelope with scoped offset cursors, item and UTF-8 byte limits, plus tests for dispatch, context isolation and pagination progress. |
 | C08 | `dd052cd` | Added | OpenAI Responses streaming adapter for text, function calls, usage and stop reasons; registry selects Anthropic or OpenAI from `LLM_PRIMARY`. |

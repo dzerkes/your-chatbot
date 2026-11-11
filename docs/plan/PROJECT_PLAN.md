@@ -159,7 +159,7 @@ real tracing, before making any single layer good.
 - **Done when:** the tool returns pages of projects, and tests show that
   `chatbot_ro` cannot read `raw` or write anywhere.
 
-### [ ] C11 `feat(agent): add the agent loop, respond() and a CLI`
+### [x] C11 `feat(agent): add the agent loop, respond() and a CLI`
 
 - **Goal:** the brain works end to end without any web layer.
 - **Files:** `chatbot/src/chatbot/{agent,app,cli}.py`, `chatbot/src/chatbot/prompts/system.md`.

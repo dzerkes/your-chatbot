@@ -6,10 +6,9 @@ tools, Postgres for history and memory, and tracing plus evals around all of it.
 
 > **Status:** Postgres with pgvector and Alembic migrations run locally. The
 > `chatbot` package provides settings, domain types, session/message stores,
-> Anthropic/OpenAI LLM adapters, and a read-only project query tool over
-> synthetic company data (C10).
-> The agent and web services
-> are still planned. The build order is in
+> Anthropic/OpenAI LLM adapters, and a terminal agent that queries synthetic
+> project data and saves conversations (C11). Web services are still planned.
+> The build order is in
 > [docs/plan/PROJECT_PLAN.md](docs/plan/PROJECT_PLAN.md) and progress is tracked
 > in [CHANGELOG.md](CHANGELOG.md).
 
@@ -71,6 +70,18 @@ make psql                # connects as the migration owner (\q to exit)
 make test-integration    # starts Postgres, migrates, then runs integration tests
 make down                # stops containers; keeps the named database volume
 ```
+
+Keep Postgres running with `make up` and set the API key for your `LLM_PRIMARY`
+provider in `.env`, then chat:
+
+```bash
+uv run python -m chatbot.cli chat --user alice
+uv run python -m chatbot.cli chat --user alice --prompt "Which Northstar projects are active?"
+```
+
+Use `--session SESSION_UUID` with the same user to resume a conversation.
+Interactive chat exits with `/quit` or `/exit`. See [chatbot/README.md](chatbot/README.md)
+for the streaming `respond()` interface and lifecycle.
 
 Postgres is available on `127.0.0.1:5432` (override `POSTGRES_PORT` in `.env`).
 `POSTGRES_USER` names the migration owner; `APP_DB_USER` and `RO_DB_USER` name
