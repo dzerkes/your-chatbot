@@ -148,3 +148,51 @@ records copies of requests for assertions. It needs no API key. Adapter unit
 tests use recorded stream events. To run the Anthropic live test, set
 `ANTHROPIC_API_KEY` and run `uv run pytest -m llm tests/test_llm_live.py`.
 The default pytest run excludes `llm` tests.
+
+## Tools
+
+`Tool` wraps a typed async function, a name, a description and a Pydantic
+`ToolInput` model. The input model generates the JSON schema given to the LLM.
+`ToolRegistry` rejects duplicate names, exposes `definitions()` for `LLMRequest`,
+and dispatches a `ToolUse` through `execute(call, context)`:
+
+```python
+from pydantic import Field
+
+from chatbot.tools.base import Tool, ToolContext, ToolInput
+from chatbot.tools.pagination import PaginationParams, ToolPage, paginate
+from chatbot.tools.registry import ToolRegistry
+
+
+class NamesInput(ToolInput):
+    pagination: PaginationParams = Field(default_factory=PaginationParams)
+
+
+async def list_names(inputs: NamesInput, context: ToolContext) -> ToolPage:
+    return paginate([context.user.display_name], inputs.pagination)
+
+
+registry = ToolRegistry()
+registry.register(Tool("list_names", "List names visible to the caller", NamesInput, list_names))
+definitions = registry.definitions()
+```
+
+Application code supplies `ToolContext(user, session_id, turn_id, trace_id)`;
+it is separate from model arguments. Undeclared input fields are rejected.
+Execution binds the context IDs to logging for the duration of the call.
+Successful dispatch returns a `ToolResult` containing `items`, `total` and
+`next_cursor`. Invalid arguments, unknown tools, oversized results and execution
+failures raise `ToolError`; unexpected failures expose a safe message and retain
+their cause for debugging.
+
+Pages default to 20 items, with a maximum of 100 and a 16 KiB JSON payload limit.
+`paginate` handles ordered in-memory data. Database tools can use `decode_cursor`
+to obtain an offset, fetch at most `limit` rows, and call `build_page` with that
+slice and the total count. Byte limits include the whole envelope in UTF-8;
+shrinking a page keeps the cursor at the next omitted item. A single oversized
+item fails instead of being skipped.
+
+Cursors use versioned offsets, so tools must supply a stable ordering. Pass a
+stable `scope` representing the user and filters to detect reuse with a different
+query. Cursors are pagination hints; tools enforce access on every call. Offset
+pagination can shift when the underlying data changes between requests.

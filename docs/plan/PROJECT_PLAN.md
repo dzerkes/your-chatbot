@@ -134,7 +134,7 @@ real tracing, before making any single layer good.
 - **Done when:** the contract tests pass for both adapters, and changing
   `LLM_PRIMARY` switches provider with no code change.
 
-### [ ] C09 `feat(tools): add tool interface, registry and paginated results`
+### [x] C09 `feat(tools): add tool interface, registry and paginated results`
 
 - **Goal:** the shape every tool follows.
 - **Files:** `chatbot/src/chatbot/tools/{base,registry,pagination}.py`.

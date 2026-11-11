@@ -14,8 +14,10 @@ All important changes to this project are recorded here, newest first.
 
 | Plan id | Commit | Type | Change |
 |---|---|---|---|
-| C08 | Pending | Added | OpenAI Responses streaming adapter for text, function calls, usage and stop reasons; registry selects Anthropic or OpenAI from `LLM_PRIMARY`. |
-| C08 | Pending | Added | Shared text and tool contract tests for both adapters, OpenAI recorded streams and registry selection tests. |
+| C09 | Pending | Added | Typed async tools, Pydantic input schemas, a tool registry, server-supplied identity and trace context, and dispatch to provider-neutral tool results. |
+| C09 | Pending | Added | Paginated JSON result envelope with scoped offset cursors, item and UTF-8 byte limits, plus tests for dispatch, context isolation and pagination progress. |
+| C08 | `dd052cd` | Added | OpenAI Responses streaming adapter for text, function calls, usage and stop reasons; registry selects Anthropic or OpenAI from `LLM_PRIMARY`. |
+| C08 | `dd052cd` | Added | Shared text and tool contract tests for both adapters, OpenAI recorded streams and registry selection tests. |
 | C07 | `40184a7` | Added | Provider-neutral request, event and tool definitions, an Anthropic streaming adapter, and a deterministic scripted provider. |
 | C07 | `40184a7` | Added | Recorded Anthropic stream tests and an opt-in `llm` test for a real API stream. |
 | C06 | `be29dc4` | Added | `SessionStore` and `MessageStore` protocols, with async Postgres and in-memory implementations for users, sessions, turns and messages. |
