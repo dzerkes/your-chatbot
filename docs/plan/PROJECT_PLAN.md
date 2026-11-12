@@ -234,7 +234,7 @@ real tracing, before making any single layer good.
   create/list, Streamlit health and frontend-to-backend networking worked, and
   a second boot left the seed unchanged. A real streamed answer needs a real key.
 
-### [ ] C17 `ci: add lint, type-check and test pipeline`
+### [x] C17 `ci: add lint, type-check and test pipeline`
 
 - **Goal:** every push is checked.
 - **Files:** `.github/workflows/ci.yml`.
