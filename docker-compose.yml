@@ -26,12 +26,11 @@ services:
       start_period: 10s
 
   migrate:
-    image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
-    profiles: ["tools"]
-    working_dir: /workspace
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: migrate
     environment:
-      UV_PROJECT_ENVIRONMENT: /tmp/chatbot-venv
-      UV_LINK_MODE: copy
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_DB: ${POSTGRES_DB:-chatbot}
@@ -39,14 +38,88 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       APP_DB_USER: ${APP_DB_USER:-chatbot_app}
       RO_DB_USER: ${RO_DB_USER:-chatbot_ro}
-    volumes:
-      - ./:/workspace:ro
-      - uv_cache:/root/.cache/uv
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-false}
     depends_on:
       postgres:
         condition: service_healthy
-    command: ["uv", "run", "--locked", "alembic", "-c", "db/alembic.ini", "upgrade", "head"]
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: backend
+    environment:
+      APP_ENV: ${APP_ENV:-local}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FORMAT: ${LOG_FORMAT:-console}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-chatbot}
+      APP_DB_USER: ${APP_DB_USER:-chatbot_app}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?Set APP_DB_PASSWORD in .env}
+      RO_DB_USER: ${RO_DB_USER:-chatbot_ro}
+      RO_DB_PASSWORD: ${RO_DB_PASSWORD:?Set RO_DB_PASSWORD in .env}
+      LLM_PRIMARY: ${LLM_PRIMARY:-anthropic:claude-sonnet-5-5}
+      LLM_FALLBACKS: ${LLM_FALLBACKS:-}
+      LLM_SUMMARY_MODEL: ${LLM_SUMMARY_MODEL:-anthropic:claude-haiku-5-5}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      LLM_MAX_OUTPUT_TOKENS: ${LLM_MAX_OUTPUT_TOKENS:-2048}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-60}
+      LLM_MAX_RETRIES: ${LLM_MAX_RETRIES:-2}
+      AGENT_MAX_STEPS: ${AGENT_MAX_STEPS:-8}
+      CONTEXT_STRATEGY: ${CONTEXT_STRATEGY:-sliding_window}
+      CONTEXT_MAX_INPUT_TOKENS: ${CONTEXT_MAX_INPUT_TOKENS:-60000}
+      CONTEXT_KEEP_LAST_TURNS: ${CONTEXT_KEEP_LAST_TURNS:-10}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-}
+      RERANKER: ${RERANKER:-none}
+      RETRIEVAL_CANDIDATES: ${RETRIEVAL_CANDIDATES:-40}
+      RETRIEVAL_PAGE_SIZE: ${RETRIEVAL_PAGE_SIZE:-5}
+      MEMORY_ENABLED: ${MEMORY_ENABLED:-false}
+      TRACING_ENABLED: ${TRACING_ENABLED:-false}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-https://cloud.langfuse.com}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      RATE_LIMIT_REQUESTS_PER_MINUTE: ${RATE_LIMIT_REQUESTS_PER_MINUTE:-20}
+      COST_CAP_USD_PER_USER_PER_DAY: ${COST_CAP_USD_PER_USER_PER_DAY:-2.00}
+      AUTH_MODE: ${AUTH_MODE:-dev}
+      AUTH_DEV_TOKENS: ${AUTH_DEV_TOKENS:-dev-token-alice:alice,dev-token-bob:bob}
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    stop_grace_period: 30s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      target: frontend
+    environment:
+      BACKEND_URL: http://backend:8000
+      FRONTEND_PORT: 8501
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-8501}:8501"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 15s
+    stop_grace_period: 30s
 
 volumes:
   postgres_data:
-  uv_cache:

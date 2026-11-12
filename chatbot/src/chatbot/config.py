@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     app_db_password: SecretStr = SecretStr("change-me")
     ro_db_user: str = "chatbot_ro"
     ro_db_password: SecretStr = SecretStr("change-me")
+    seed_demo_data: bool = False  # Used only by the explicit database bootstrap job.
 
     llm_primary: str = "anthropic:claude-sonnet-5-5"
     llm_fallbacks: Annotated[tuple[str, ...], NoDecode] = ()
