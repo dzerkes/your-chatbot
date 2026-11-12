@@ -42,6 +42,40 @@ def test_compose_configuration() -> None:
         v["target"] == "/docker-entrypoint-initdb.d" and v["read_only"] for v in postgres["volumes"]
     )
     assert "pg_isready -h 127.0.0.1" in postgres["healthcheck"]["test"][1]
+    migrate = config["services"]["migrate"]
+    backend = config["services"]["backend"]
+    frontend = config["services"]["frontend"]
+    assert migrate["build"]["target"] == "migrate" and not migrate.get("profiles")
+    assert migrate["depends_on"]["postgres"]["condition"] == "service_healthy"
+    assert backend["depends_on"]["migrate"]["condition"] == "service_completed_successfully"
+    assert frontend["depends_on"]["backend"]["condition"] == "service_healthy"
+    assert backend["environment"]["POSTGRES_HOST"] == "postgres"
+    assert backend["environment"]["POSTGRES_PORT"] == "5432"
+    assert "POSTGRES_PASSWORD" not in backend["environment"]
+    assert "POSTGRES_ADMIN_PASSWORD" not in backend["environment"]
+    assert frontend["environment"] == {
+        "BACKEND_URL": "http://backend:8000",
+        "FRONTEND_PORT": "8501",
+    }
+    assert all(service["ports"][0]["host_ip"] == "127.0.0.1" for service in (backend, frontend))
+    assert all(
+        service.get("healthcheck") and not service.get("volumes") for service in (backend, frontend)
+    )
+
+
+@pytest.mark.unit
+def test_compose_backend_environment_is_valid(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Compose's dotenv keeps inline comments on empty keys, which Settings must still accept."""
+    if not shutil.which("docker"):
+        pytest.skip("Docker CLI is required to validate Compose configuration")
+    result = compose("--env-file", ".env.example", "config", "--format", "json")
+    assert result.returncode == 0, result.stderr
+    environment = json.loads(result.stdout)["services"]["backend"]["environment"]
+    for name, value in environment.items():
+        monkeypatch.setenv(name, value or "")
+    from chatbot.config import Settings
+
+    Settings(_env_file=None)  # type: ignore[call-arg]
 
 
 def sql(role: str, statement: str) -> subprocess.CompletedProcess[str]:

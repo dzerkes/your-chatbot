@@ -219,7 +219,7 @@ real tracing, before making any single layer good.
 - **Verification:** the flow passes AppTest against the running API and Postgres.
   Native browser review was blocked by unavailable Computer Use permissions.
 
-### [ ] C16 `feat(infra): add Dockerfiles and wire all services in compose`
+### [x] C16 `feat(infra): add Dockerfiles and wire all services in compose`
 
 - **Goal:** milestone M1.
 - **Files:** `backend/Dockerfile`, `frontend/Dockerfile`, `.dockerignore`,
@@ -229,6 +229,10 @@ real tracing, before making any single layer good.
   lockfile.
 - **Done when:** on a clean machine, `cp .env.example .env`, add keys,
   `docker compose up`, and the M1 description holds.
+- **Verification:** a fresh Compose project from an unmodified `.env.example`
+  (placeholder API key) reached healthy on all services; health, session
+  create/list, Streamlit health and frontend-to-backend networking worked, and
+  a second boot left the seed unchanged. A real streamed answer needs a real key.
 
 ### [ ] C17 `ci: add lint, type-check and test pipeline`
 

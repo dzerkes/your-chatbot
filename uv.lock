@@ -2362,6 +2362,10 @@ dev = [
     { name = "pytest-cov" },
     { name = "ruff" },
 ]
+migrations = [
+    { name = "alembic" },
+    { name = "chatbot" },
+]
 
 [package.metadata]
 
@@ -2377,4 +2381,8 @@ dev = [
     { name = "pytest-asyncio", specifier = ">=0.24" },
     { name = "pytest-cov", specifier = ">=5" },
     { name = "ruff", specifier = ">=0.6" },
+]
+migrations = [
+    { name = "alembic", specifier = ">=1.14,<2" },
+    { name = "chatbot", editable = "chatbot" },
 ]

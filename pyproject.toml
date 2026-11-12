@@ -32,8 +32,12 @@ chatbot-backend = { workspace = true }
 chatbot-frontend = { workspace = true }
 
 [dependency-groups]
-dev = [
+migrations = [
     "alembic>=1.14,<2",
+    "chatbot",
+]
+dev = [
+    { include-group = "migrations" },
     "chatbot",
     "chatbot-backend",
     "chatbot-frontend",

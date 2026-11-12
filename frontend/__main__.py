@@ -1,5 +1,6 @@
 """Run the installed Streamlit entrypoint using FRONTEND_PORT."""
 
+import argparse
 from importlib.resources import files
 
 from streamlit.web import cli
@@ -8,6 +9,9 @@ from frontend.config import FrontendSettings
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Run the Streamlit chat UI")
+    parser.add_argument("--host", default="127.0.0.1")
+    args = parser.parse_args()
     settings = FrontendSettings()
     cli.main(
         [
@@ -16,7 +20,7 @@ def main() -> None:
             "--server.port",
             str(settings.frontend_port),
             "--server.address",
-            "127.0.0.1",
+            args.host,
             "--server.headless=true",
             "--browser.gatherUsageStats=false",
         ]
