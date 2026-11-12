@@ -1,6 +1,7 @@
 """Translate Anthropic Messages streams to the provider-neutral LLM contract."""
 
 import json
+import logging
 from collections.abc import AsyncIterator, Sequence
 from typing import Any, cast
 
@@ -20,6 +21,8 @@ from chatbot.llm.base import (
     ToolDefinition,
 )
 from chatbot.types import Message, Text, ToolResult, ToolUse, Usage
+
+logger = logging.getLogger(__name__)
 
 
 def _message_params(messages: Sequence[Message]) -> list[MessageParam]:
@@ -238,10 +241,16 @@ class AnthropicProvider:
             translator.finish()
         except ProviderError:
             raise
+        # Users get a generic message; operators need the provider's reason in the logs.
         except APIConnectionError as exc:
+            logger.warning("Anthropic connection failed: %s", exc)
             raise ProviderError("Anthropic connection failed", retryable=True) from exc
         except APIStatusError as exc:
+            logger.warning(
+                "Anthropic request failed (request_id=%s): %s", exc.request_id, exc.message
+            )
             retryable = exc.status_code == 429 or exc.status_code >= 500
             raise ProviderError("Anthropic request failed", retryable=retryable) from exc
         except APIError as exc:
+            logger.warning("Anthropic request failed: %s", exc.message)
             raise ProviderError("Anthropic request failed") from exc

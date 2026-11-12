@@ -6,6 +6,9 @@ from pathlib import Path
 from typing import Any, cast
 from uuid import uuid4
 
+import anthropic
+import httpx
+import openai
 import pytest
 from anthropic import AsyncAnthropic
 from anthropic.types import RawMessageStreamEvent
@@ -235,6 +238,39 @@ async def test_openai_incomplete_stream_and_bad_arguments() -> None:
     with pytest.raises(ProviderError, match="Invalid streamed tool arguments"):
         _ = [event async for event in llm.stream(request())]
     assert client.responses.stream.closed
+
+
+@pytest.mark.parametrize(
+    ("kind", "fixture", "error_type", "request_id_header"),
+    [
+        ("anthropic", "anthropic_text_stream.json", anthropic.BadRequestError, "request-id"),
+        ("openai", "openai_text_stream.json", openai.BadRequestError, "x-request-id"),
+    ],
+)
+async def test_status_error_logs_provider_reason_but_stays_generic(
+    kind: str,
+    fixture: str,
+    error_type: type[Exception],
+    request_id_header: str,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    llm, client = provider(kind, fixture)
+    reason = "Your credit balance is too low to access the API."
+    response = httpx.Response(
+        400,
+        headers={request_id_header: "req_fixture"},
+        request=httpx.Request("POST", "https://provider.example/v1"),
+    )
+
+    async def fail(**_kwargs: Any) -> RecordedStream:
+        raise error_type(reason, response=response, body=None)  # type: ignore[call-arg]
+
+    client.messages.create = fail  # type: ignore[method-assign]
+    with caplog.at_level("WARNING"), pytest.raises(ProviderError) as caught:
+        _ = [event async for event in llm.stream(request())]
+    assert reason not in str(caught.value)
+    assert not caught.value.retryable
+    assert reason in caplog.text and "req_fixture" in caplog.text
 
 
 async def test_registry_uses_llm_primary_without_code_change(
