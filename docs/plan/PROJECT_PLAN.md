@@ -65,7 +65,7 @@ affecting the commits before them.
 The aim is the thinnest slice through every layer, with real persistence and
 real tracing, before making any single layer good.
 
-### [ ] C03 `feat(infra): add docker compose with Postgres and pgvector`
+### [x] C03 `feat(infra): add docker compose with Postgres and pgvector`
 
 - **Goal:** one command starts the database with the three roles.
 - **Files:** `docker-compose.yml`, `db/init/01_roles.sql`, `Makefile`
@@ -73,11 +73,13 @@ real tracing, before making any single layer good.
 - **Details:** `pgvector/pgvector` image, named volume, healthcheck. The init
   script creates `chatbot_owner`, `chatbot_app` and `chatbot_ro` from the
   environment and enables the `vector` extension. `chatbot_ro` gets a statement
-  timeout.
+  timeout. The three application roles are non-superusers; the image uses a
+  separate `postgres` bootstrap superuser. Integration tests in
+  `tests/test_infra.py` check authentication, pgvector and permissions.
 - **Done when:** `make up` then `make psql` connects, and `chatbot_ro` cannot
   create a table.
 
-### [ ] C04 `feat(chatbot): add package skeleton with settings, logging and domain types`
+### [x] C04 `feat(chatbot): add package skeleton with settings, logging and domain types`
 
 - **Goal:** an installable `chatbot` package with the shared vocabulary.
 - **Files:** `chatbot/pyproject.toml`, `chatbot/src/chatbot/{config,logging,errors,types}.py`,
@@ -88,7 +90,7 @@ real tracing, before making any single layer good.
   binds `session_id`, `turn_id` and `trace_id` to every line. Typed errors.
 - **Done when:** `uv run pytest` passes and `python -c "import chatbot"` works.
 
-### [ ] C05 `feat(db): add migrations for users, sessions, turns and messages`
+### [x] C05 `feat(db): add migrations for users, sessions, turns and messages`
 
 - **Goal:** the history schema.
 - **Files:** `db/alembic.ini`, `db/migrations/`, a `migrate` service in compose.
@@ -100,17 +102,18 @@ real tracing, before making any single layer good.
 - **Done when:** `docker compose run migrate` creates the tables and
   `alembic downgrade base` removes them.
 
-### [ ] C06 `feat(chatbot): add session and message repositories`
+### [x] C06 `feat(chatbot): add session and message repositories`
 
 - **Goal:** all history SQL in one place.
 - **Files:** `chatbot/src/chatbot/store/{base,postgres,memory}.py`.
 - **Details:** Repository pattern. `SessionStore` and `MessageStore` protocols
   with a Postgres implementation (async) and an in-memory one for unit tests.
-  Writes for one turn happen in one transaction.
+  Writes for one turn happen in one transaction. Reads and writes take an owner
+  id; a saved turn advances the session's activity timestamp.
 - **Done when:** integration tests round-trip a session with a tool call and a
   tool result and read it back identical.
 
-### [ ] C07 `feat(llm): add provider interface, Anthropic adapter and scripted fake`
+### [x] C07 `feat(llm): add provider interface, Anthropic adapter and scripted fake`
 
 - **Goal:** one interface the rest of the code talks to.
 - **Files:** `chatbot/src/chatbot/llm/{base,anthropic,fake}.py`.
@@ -121,7 +124,7 @@ real tracing, before making any single layer good.
 - **Done when:** adapter unit tests pass against recorded responses, and one
   `llm`-marked test streams from the real API.
 
-### [ ] C08 `feat(llm): add OpenAI adapter and provider registry`
+### [x] C08 `feat(llm): add OpenAI adapter and provider registry`
 
 - **Goal:** prove that a new SDK is one adapter and one registration.
 - **Files:** `chatbot/src/chatbot/llm/{openai,registry}.py`.
@@ -131,7 +134,7 @@ real tracing, before making any single layer good.
 - **Done when:** the contract tests pass for both adapters, and changing
   `LLM_PRIMARY` switches provider with no code change.
 
-### [ ] C09 `feat(tools): add tool interface, registry and paginated results`
+### [x] C09 `feat(tools): add tool interface, registry and paginated results`
 
 - **Goal:** the shape every tool follows.
 - **Files:** `chatbot/src/chatbot/tools/{base,registry,pagination}.py`.
@@ -143,7 +146,7 @@ real tracing, before making any single layer good.
 - **Done when:** a toy tool is registered, its schema is generated, and
   pagination tests pass.
 
-### [ ] C10 `feat(data): add demo dataset, curated views and the query_projects tool`
+### [x] C10 `feat(data): add demo dataset, curated views and the query_projects tool`
 
 - **Goal:** the first real tool, with database-enforced read-only access.
 - **Files:** `db/migrations/` (schemas `raw` and `curated`), `db/seed/`,
@@ -156,7 +159,7 @@ real tracing, before making any single layer good.
 - **Done when:** the tool returns pages of projects, and tests show that
   `chatbot_ro` cannot read `raw` or write anywhere.
 
-### [ ] C11 `feat(agent): add the agent loop, respond() and a CLI`
+### [x] C11 `feat(agent): add the agent loop, respond() and a CLI`
 
 - **Goal:** the brain works end to end without any web layer.
 - **Files:** `chatbot/src/chatbot/{agent,app,cli}.py`, `chatbot/src/chatbot/prompts/system.md`.
@@ -169,7 +172,7 @@ real tracing, before making any single layer good.
   several tool calls, tool error, step limit. The CLI answers a question about
   the demo projects.
 
-### [ ] C12 `feat(context): add context builder with full and sliding-window strategies`
+### [x] C12 `feat(context): add context builder with full and sliding-window strategies`
 
 - **Goal:** separate what is stored from what the model sees.
 - **Files:** `chatbot/src/chatbot/context/{base,full,sliding_window,tokens}.py`.
@@ -179,7 +182,7 @@ real tracing, before making any single layer good.
 - **Done when:** tests show the window keeps the last N turns, keeps tool
   pairs intact, and `CONTEXT_STRATEGY` selects the strategy.
 
-### [ ] C13 `feat(tracing): add OpenTelemetry spans exported to Langfuse`
+### [x] C13 `feat(tracing): add OpenTelemetry spans exported to Langfuse`
 
 - **Goal:** every turn is visible as a trace.
 - **Files:** `chatbot/src/chatbot/tracing.py`, small hooks in the agent,
@@ -191,7 +194,7 @@ real tracing, before making any single layer good.
 - **Done when:** an in-memory exporter test asserts the span tree, and a CLI
   chat shows up in Langfuse grouped by session.
 
-### [ ] C14 `feat(backend): add FastAPI service with auth, sessions and chat stream`
+### [x] C14 `feat(backend): add FastAPI service with auth, sessions and chat stream`
 
 - **Goal:** the thin web layer.
 - **Files:** `backend/pyproject.toml`, `backend/app/{main,auth,deps}.py`,
@@ -203,7 +206,7 @@ real tracing, before making any single layer good.
 - **Done when:** API tests pass with the scripted provider, and `curl -N`
   shows a streamed answer.
 
-### [ ] C15 `feat(frontend): add Streamlit chat UI`
+### [x] C15 `feat(frontend): add Streamlit chat UI`
 
 - **Goal:** what the end user sees.
 - **Files:** `frontend/pyproject.toml`, `frontend/app.py`, `frontend/api_client.py`.
@@ -213,8 +216,10 @@ real tracing, before making any single layer good.
   the backend.
 - **Done when:** a manual run-through works: new chat, ask, reload the page,
   reopen the session, continue it.
+- **Verification:** the flow passes AppTest against the running API and Postgres.
+  Native browser review was blocked by unavailable Computer Use permissions.
 
-### [ ] C16 `feat(infra): add Dockerfiles and wire all services in compose`
+### [x] C16 `feat(infra): add Dockerfiles and wire all services in compose`
 
 - **Goal:** milestone M1.
 - **Files:** `backend/Dockerfile`, `frontend/Dockerfile`, `.dockerignore`,
@@ -224,13 +229,20 @@ real tracing, before making any single layer good.
   lockfile.
 - **Done when:** on a clean machine, `cp .env.example .env`, add keys,
   `docker compose up`, and the M1 description holds.
+- **Verification:** a fresh Compose project from an unmodified `.env.example`
+  (placeholder API key) reached healthy on all services; health, session
+  create/list, Streamlit health and frontend-to-backend networking worked, and
+  a second boot left the seed unchanged. A real streamed answer needs a real key.
 
-### [ ] C17 `ci: add lint, type-check and test pipeline`
+### [x] C17 `ci: add lint, type-check and test pipeline`
 
 - **Goal:** every push is checked.
 - **Files:** `.github/workflows/ci.yml`.
 - **Details:** jobs: lint (ruff), types (mypy), unit tests, integration tests
-  with a Postgres service container. `llm` tests are excluded.
+  against Postgres. `llm` tests are excluded. Postgres runs through
+  `docker-compose.yml` (`make test-integration`), not a job service container:
+  the tests drive `docker compose exec/run`, and the `db/init` role setup must be
+  mounted from the checkout.
 - **Done when:** the workflow is green on `main`.
 
 ---

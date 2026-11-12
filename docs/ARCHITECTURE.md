@@ -73,6 +73,7 @@ To keep providers pluggable, the rest of the code talks to one interface:
 ```python
 class LLMProvider(Protocol):
     name: str
+
     def stream(self, request: LLMRequest) -> AsyncIterator[LLMEvent]: ...
 ```
 
@@ -197,6 +198,12 @@ update or delete.
 | `chatbot_owner` | Owns the schemas, runs migrations | The `migrate` job only |
 | `chatbot_app` | Read/write history and memory, insert audit rows | `chatbot` package |
 | `chatbot_ro` | `SELECT` on `curated` views and RAG tables | Tools |
+
+These are non-superuser application roles. Compose initializes them using the
+image's separate `postgres` bootstrap superuser. Public database privileges
+(including temporary table creation) are revoked in the application database;
+object grants are added by migrations. The tool role has a five-second
+statement timeout.
 
 ### 3.10 Prompt injection
 

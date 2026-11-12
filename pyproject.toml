@@ -24,10 +24,24 @@ package = false
 #   "frontend"     C15  Streamlit app, talks to the backend over HTTP only
 #   "mcp_servers"  C22  tools exposed over MCP
 #   "evals"        C29  eval datasets and runner
-members = []
+members = ["chatbot", "backend", "frontend"]
+
+[tool.uv.sources]
+chatbot = { workspace = true }
+chatbot-backend = { workspace = true }
+chatbot-frontend = { workspace = true }
 
 [dependency-groups]
+migrations = [
+    "alembic>=1.14,<2",
+    "chatbot",
+]
 dev = [
+    { include-group = "migrations" },
+    "chatbot",
+    "chatbot-backend",
+    "chatbot-frontend",
+    "httpx>=0.27,<1",
     "ruff>=0.6",
     "mypy>=1.11",
     "pytest>=8",
@@ -52,7 +66,8 @@ select = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-addopts = "-ra --strict-markers"
+asyncio_default_fixture_loop_scope = "function"
+addopts = "-ra --strict-markers -m 'not llm'"
 markers = [
     "unit: fast, no network, no database (default)",
     "integration: needs the Postgres container",

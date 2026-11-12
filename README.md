@@ -4,7 +4,13 @@ A proof of concept for a chatbot that answers questions from company data. It is
 built as a complete, small system: a chat UI, a thin API, an agent loop with
 tools, Postgres for history and memory, and tracing plus evals around all of it.
 
-> **Status:** planning. Nothing runs yet. The build order is in
+> **Status:** Postgres with pgvector and Alembic migrations run locally. The
+> `chatbot` package provides settings, domain types, session/message stores,
+> Anthropic/OpenAI LLM adapters, and a terminal agent that queries synthetic
+> project data and saves conversations, with configurable full or recent-turn
+> model context and OpenTelemetry tracing to Langfuse. FastAPI and Streamlit
+> provide authenticated sessions, streamed chat and conversation resume (C15).
+> The build order is in
 > [docs/plan/PROJECT_PLAN.md](docs/plan/PROJECT_PLAN.md) and progress is tracked
 > in [CHANGELOG.md](CHANGELOG.md).
 
@@ -57,9 +63,68 @@ your-chatbot/
 Requirements: Docker, [uv](https://docs.astral.sh/uv/), Python 3.12.
 
 ```bash
-cp .env.example .env     # then fill in the API keys
-uv sync                  # installs the shared dev tools
+cp .env.example .env     # choose database passwords; API keys are needed later
+uv sync                  # installs chatbot and the shared dev tools
+make up                  # starts Postgres and waits for its healthcheck
+make migrate             # creates or updates the history tables
+make seed                # loads synthetic clients and projects (repeatable)
+make psql                # connects as the migration owner (\q to exit)
+make test-integration    # starts Postgres, migrates, then runs integration tests
+make down                # stops containers; keeps the named database volume
 ```
+
+Keep Postgres running with `make up` and set the API key for your `LLM_PRIMARY`
+provider in `.env`, then chat:
+
+```bash
+uv run python -m chatbot.cli chat --user alice
+uv run python -m chatbot.cli chat --user alice --prompt "Which Northstar projects are active?"
+```
+
+Use `--session SESSION_UUID` with the same user to resume a conversation.
+Interactive chat exits with `/quit` or `/exit`. See [chatbot/README.md](chatbot/README.md)
+for the streaming `respond()` interface and lifecycle.
+
+Start the HTTP API with `uv run --package chatbot-backend python -m app`.
+It uses `BACKEND_PORT` (default 8000); `/docs` provides interactive API docs.
+See [backend/README.md](backend/README.md) for bearer-token configuration,
+session endpoints and a `curl -N` streaming example.
+
+In another terminal, run `uv run --package chatbot-frontend python -m frontend`
+and open `http://localhost:8501`. Sign in with a configured dev bearer token,
+then create or reopen a conversation. See [frontend/README.md](frontend/README.md)
+for frontend settings and reload behavior.
+
+To trace CLI conversations, set `TRACING_ENABLED=true` and the Langfuse project
+keys in `.env`. Traces are grouped by session; see the
+[tracing setup](chatbot/README.md#tracing-to-langfuse) for attributes and export behavior.
+
+Postgres is available on `127.0.0.1:5432` (override `POSTGRES_PORT` in `.env`).
+`POSTGRES_USER` names the migration owner; `APP_DB_USER` and `RO_DB_USER` name
+the application and tool logins. All three are non-superusers. The container
+uses a separate `postgres` superuser for initialization; its password defaults
+to `POSTGRES_PASSWORD` for local development and can be overridden with
+`POSTGRES_ADMIN_PASSWORD`.
+
+Initialization creates the roles and the `vector` extension only on an empty
+volume. Changing `.env` does not change existing database credentials. Apply
+credential changes with `ALTER ROLE`, or, for a disposable local database,
+`docker compose down -v` deletes **all database data** so the next `make up`
+initializes it again. `make down` preserves data.
+
+The read-only role has a five-second statement timeout and cannot create
+schemas, regular tables or temporary tables. It can select approved fields
+through `curated.clients` and `curated.projects`, with no access to `raw` tables.
+
+The migration job uses the owner role and runs `alembic upgrade head` once.
+It can be run again safely when no new migrations exist. The initial revision
+creates `users`, `sessions`, `turns` and `messages`; see [db/README.md](db/README.md)
+for the schema, grants and downgrade command. If the host's port 5432 is in
+use, set `POSTGRES_PORT=55432` in `.env` before `make up` or Compose commands.
+
+The async `PostgresStore` uses the application role for history reads and
+writes. `MemoryStore` follows the same interface for unit tests. See
+[chatbot/README.md](chatbot/README.md) for the store and LLM provider contracts.
 
 From milestone M1 onward (commit C16 in the plan):
 
@@ -70,12 +135,28 @@ docker compose up        # UI on http://localhost:8501, API on http://localhost:
 ## Development
 
 ```bash
-uv run ruff check .      # lint
+make lint                # lint and check formatting
 uv run ruff format .     # format
 uv run mypy .            # types
-uv run pytest            # unit tests (no network, no database)
-uv run pytest -m integration   # needs the Postgres container
+make test                # unit tests (no network, no database)
+make test-integration    # starts Postgres, migrates, then runs integration tests
+uv run pytest -m llm tests/test_llm_live.py  # opt-in real API stream; needs key
 ```
+
+The `chatbot` package is installed in editable mode by `uv sync`, so source
+changes are available immediately. Check the import with:
+
+```bash
+uv run python -c "import chatbot; print(chatbot.__file__)"
+```
+
+Application code loads configuration explicitly with `Settings()` from
+`chatbot.config`. Values resolve from constructor arguments, then environment
+variables, then `.env` in the working directory, then defaults. Blank environment
+values use defaults; secrets are masked when settings are printed. API keys
+are optional until a provider is used. The `.env` file is not loaded on import.
+
+See [chatbot/README.md](chatbot/README.md) for the core types and logging API.
 
 ## Documentation
 

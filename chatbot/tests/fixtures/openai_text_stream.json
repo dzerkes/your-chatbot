@@ -1,0 +1,13 @@
+[
+  {"type":"response.output_text.delta","content_index":0,"delta":"Hel","item_id":"msg_1","output_index":0,"sequence_number":1,"logprobs":[]},
+  {"type":"response.output_text.delta","content_index":0,"delta":"lo!","item_id":"msg_1","output_index":0,"sequence_number":2,"logprobs":[]},
+  {"type":"response.completed","sequence_number":3,"response":{
+    "id":"resp_text","created_at":0,"model":"gpt-5.5","object":"response","output":[
+      {"id":"msg_1","type":"message","role":"assistant","status":"completed",
+       "content":[{"type":"output_text","text":"Hello!","annotations":[]}]}
+    ],
+    "parallel_tool_calls":true,"tool_choice":"auto","tools":[],"status":"completed",
+    "usage":{"input_tokens":25,"input_tokens_details":{"cached_tokens":5,"cache_write_tokens":2},
+      "output_tokens":4,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":29}
+  }}
+]
