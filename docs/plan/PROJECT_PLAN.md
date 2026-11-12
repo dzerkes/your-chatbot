@@ -239,7 +239,10 @@ real tracing, before making any single layer good.
 - **Goal:** every push is checked.
 - **Files:** `.github/workflows/ci.yml`.
 - **Details:** jobs: lint (ruff), types (mypy), unit tests, integration tests
-  with a Postgres service container. `llm` tests are excluded.
+  against Postgres. `llm` tests are excluded. Postgres runs through
+  `docker-compose.yml` (`make test-integration`), not a job service container:
+  the tests drive `docker compose exec/run`, and the `db/init` role setup must be
+  mounted from the checkout.
 - **Done when:** the workflow is green on `main`.
 
 ---
