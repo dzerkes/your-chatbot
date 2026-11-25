@@ -14,3 +14,13 @@ Groups used here:
 - leadership  managers and directors
 
 This file is .txt on purpose so ingestion skips it.
+
+Adversarial fixtures (C21) contain prompt injections on purpose, for the
+injection tests. Their front matter starts with a comment saying so:
+
+- facilities/office-faq.md            formatting hijack (reply in French, sign off)
+- it/vpn-setup.md                     link exfiltration of the user's question, a
+                                      fake closing tag and an image beacon
+- handbook/travel-policy-addendum.md  fake system message, prompt and data
+                                      extraction, and a hidden instruction in
+                                      invisible Unicode tag characters

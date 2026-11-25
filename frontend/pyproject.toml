@@ -18,5 +18,5 @@ dependencies = [
 dev-mode-dirs = [".."]
 
 [tool.hatch.build.targets.wheel]
-only-include = ["__init__.py", "__main__.py", "app.py", "api_client.py", "config.py"]
+only-include = ["__init__.py", "__main__.py", "app.py", "api_client.py", "config.py", "rendering.py"]
 sources = {"" = "frontend"}

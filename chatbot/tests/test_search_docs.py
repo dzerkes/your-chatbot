@@ -155,8 +155,8 @@ def test_hit_section_drops_the_document_title() -> None:
         {"query": "x" * 501},
         {"query": "q", "source_prefix": "../etc"},
         {"query": "q", "groups": ["finance"]},  # the model cannot widen access
-        {"query": "q", "pagination": {"limit": 11}},
-        {"query": "q", "tags": ["t"] * 6},
+        {"query": "q", "limit": 11},
+        {"query": "q", "tags": ["policy"]},  # not offered: the model cannot know the tags
     ],
 )
 def test_invalid_arguments_are_rejected(arguments: dict[str, Any]) -> None:
@@ -204,11 +204,11 @@ def context(*groups: str) -> ToolContext:
 async def test_search_uses_the_callers_groups_and_reranks_the_top_candidates() -> None:
     docs, retriever, reranker = tool([fused(i) for i in range(1, 31)], rerank_candidates=20)
     inputs = SearchDocsInput.model_validate(
-        {"query": " leave  policy ", "source_prefix": "handbook/", "tags": ["Policy", "policy"]}
+        {"query": " leave  policy ", "source_prefix": "handbook/"}
     )
     page = await docs.search(inputs, context("employees", "hr"))
     assert retriever.filters == [
-        SearchFilters(groups=("employees", "hr"), source_prefix="handbook/", tags=("policy",))
+        SearchFilters(groups=("employees", "hr"), source_prefix="handbook/")
     ]
     assert reranker.sizes == [20]
     assert page.total == 20 and len(page.items) == 5 and page.next_cursor
@@ -222,9 +222,7 @@ async def test_cursor_pages_forward_and_is_bound_to_the_user_and_query() -> None
     alice = context("employees")
     first = await docs.search(SearchDocsInput(query="leave"), alice)
     second = await docs.search(
-        SearchDocsInput.model_validate(
-            {"query": "leave", "pagination": {"cursor": first.next_cursor}}
-        ),
+        SearchDocsInput.model_validate({"query": "leave", "cursor": first.next_cursor}),
         alice,
     )
     ids = [item["chunk_id"] for item in [*first.items, *second.items]]  # type: ignore[index, call-overload]
@@ -232,9 +230,7 @@ async def test_cursor_pages_forward_and_is_bound_to_the_user_and_query() -> None
     for other, query in ((context("employees"), "leave"), (alice, "other query")):
         with pytest.raises(ToolError, match="cursor"):
             await docs.search(
-                SearchDocsInput.model_validate(
-                    {"query": query, "pagination": {"cursor": first.next_cursor}}
-                ),
+                SearchDocsInput.model_validate({"query": query, "cursor": first.next_cursor}),
                 other,
             )
 
@@ -246,3 +242,16 @@ async def test_empty_results_and_failures() -> None:
     docs.retriever = FakeRetriever([], RetrievalError("db down"))  # type: ignore[assignment]
     with pytest.raises(ToolError, match="Document search failed"):
         await docs.search(SearchDocsInput(query="leave"), context("employees"))
+
+
+async def test_argument_errors_name_the_field_without_echoing_values() -> None:
+    docs, _, _ = tool([])
+    with pytest.raises(ToolError) as caught:
+        await docs.tool().execute(
+            {"query": "secret-value", "pagination": {"limit": 5}, "limit": 99}, context("a")
+        )
+    message = str(caught.value)
+    assert message.startswith("Invalid tool arguments: ")
+    assert "limit: Input should be less than or equal to 10" in message
+    assert "pagination: Extra inputs are not permitted" in message
+    assert "secret-value" not in message and "99" not in message

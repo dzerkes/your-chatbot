@@ -59,7 +59,12 @@ class Tool[InputT: ToolInput]:
         try:
             inputs = self.input_model.model_validate(arguments)
         except ValidationError as exc:
-            raise ToolError("Invalid tool arguments") from exc
+            # Name the fields so the model can correct its call; never echo the values.
+            problems = "; ".join(
+                f"{'.'.join(str(part) for part in error['loc']) or 'arguments'}: {error['msg']}"
+                for error in exc.errors(include_url=False, include_input=False)[:5]
+            )
+            raise ToolError(f"Invalid tool arguments: {problems}") from exc
         with log_context(
             session_id=context.session_id, turn_id=context.turn_id, trace_id=context.trace_id
         ):

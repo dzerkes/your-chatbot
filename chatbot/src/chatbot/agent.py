@@ -33,6 +33,7 @@ from chatbot.llm.base import (
     LLMUsage,
 )
 from chatbot.logging import log_context
+from chatbot.safety import wrap_tool_results
 from chatbot.store.base import HistoryStore, Turn
 from chatbot.tools.base import ToolContext
 from chatbot.tools.registry import ToolRegistry
@@ -179,7 +180,8 @@ class Agent:
                 )
                 request = LLMRequest(
                     system=built.system,
-                    messages=built.messages,
+                    # Tool output is labelled as untrusted data on every request.
+                    messages=wrap_tool_results(built.messages),
                     tools=definitions,
                     max_output_tokens=self.settings.llm_max_output_tokens,
                     timeout_seconds=self.settings.llm_timeout_seconds,

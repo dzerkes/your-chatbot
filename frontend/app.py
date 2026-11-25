@@ -12,6 +12,7 @@ from pydantic import JsonValue, ValidationError
 
 from frontend.api_client import ApiClient, ApiError, ChatMessage
 from frontend.config import FrontendSettings
+from frontend.rendering import without_images
 
 if TYPE_CHECKING:
     from streamlit.delta_generator import DeltaGenerator
@@ -52,10 +53,13 @@ def render_history(messages: list[ChatMessage]) -> None:
             if message.role == "user":
                 with st.chat_message("user"):
                     st.markdown(
-                        "\n".join(
-                            str(block["text"])
-                            for block in message.content
-                            if block.get("type") == "text" and isinstance(block.get("text"), str)
+                        without_images(
+                            "\n".join(
+                                str(block["text"])
+                                for block in message.content
+                                if block.get("type") == "text"
+                                and isinstance(block.get("text"), str)
+                            )
                         )
                     )
         if not any(message.role in {"assistant", "tool"} for message in turn):
@@ -65,7 +69,7 @@ def render_history(messages: list[ChatMessage]) -> None:
             for message in turn:
                 for block in message.content:
                     if message.role == "assistant" and block.get("type") == "text":
-                        st.markdown(str(block.get("text", "")))
+                        st.markdown(without_images(str(block.get("text", ""))))
                     elif block.get("type") == "tool_use":
                         names[str(block.get("id"))] = str(block.get("name", "tool"))
                     elif block.get("type") == "tool_result":
@@ -86,10 +90,10 @@ def stream_reply(client: ApiClient, session_id: UUID, prompt: str) -> tuple[bool
                 if slot is None:
                     slot = st.empty()
                 text += event.text or ""
-                slot.markdown(text + " ▌")
+                slot.markdown(without_images(text) + " ▌")
             elif event.type == "tool_call_started" and event.tool_use:
                 if slot is not None:
-                    slot.markdown(text)
+                    slot.markdown(without_images(text))
                     slot, text = None, ""
                 call_id, name = str(event.tool_use["id"]), str(event.tool_use["name"])
                 names[call_id] = name
@@ -118,7 +122,7 @@ def stream_reply(client: ApiClient, session_id: UUID, prompt: str) -> tuple[bool
         failure = str(exc)
     finally:
         if slot is not None:
-            slot.markdown(text)
+            slot.markdown(without_images(text))
     if failure:
         for call_id in running:
             statuses[call_id].update(label="Search interrupted", state="error", expanded=False)
@@ -210,7 +214,7 @@ def main() -> None:
                     selected = created.id
                     _select(selected)
                 with st.chat_message("user"):
-                    st.markdown(prompt)
+                    st.markdown(without_images(prompt))
                 with st.chat_message("assistant"):
                     terminal, failure = stream_reply(client, selected, prompt)
             except ApiError as exc:

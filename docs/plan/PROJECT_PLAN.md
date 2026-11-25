@@ -310,7 +310,7 @@ real tracing, before making any single layer good.
   "no document" for the architect day rate; bob (finance, leadership) got
   "1,150 euros" cited as [Pricing guidelines 2026 > Day rates].
 
-### [ ] C21 `feat(security): add prompt-injection defenses for retrieved content`
+### [x] C21 `feat(security): add prompt-injection defenses for retrieved content`
 
 - **Goal:** retrieved text is treated as data.
 - **Files:** `chatbot/src/chatbot/safety.py`, prompt updates, frontend
@@ -321,6 +321,18 @@ real tracing, before making any single layer good.
   injected instructions for testing.
 - **Done when:** `llm`-marked tests with the adversarial documents show that
   the model does not follow the injected instructions.
+- **Verification:** `gpt-6-luna` ignored every injection even with no defenses,
+  so a test on it alone proves nothing. The `llm` tests therefore also run the
+  smaller `gpt-5.4-nano`, and a control requires an injection to succeed when
+  the defenses are off. Measured on that model, formatting hijack followed
+  9/10 with a bare prompt, 4/10 with C11's one-line rule, and 0/10 with either
+  the C21 prompt or wrapping alone, and with both. `gpt-5-nano` still followed
+  the formatting hijack 3/5 with defenses (bare: 5/5), so the defenses reduce
+  rather than remove the risk on weak models; read-only tools and access
+  control bound the damage. The suite passed twice in a row (7/7).
+- **Also:** `search_docs` no longer offers `tags` (models guessed tags and got
+  nothing) and takes flat `limit` and `cursor` arguments (small models
+  misplaced the nested object). Invalid tool arguments now name the fields.
 
 ### [ ] C22 `refactor(tools): serve tools over MCP`
 

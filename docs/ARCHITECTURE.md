@@ -209,14 +209,19 @@ statement timeout.
 
 Retrieved documents are data, not instructions. Defenses, in layers:
 
-- Tool results are wrapped and labeled as untrusted content, and the system
-  prompt tells the model to never follow instructions found inside them.
+- Before each model call, tool results are cleaned and wrapped in an
+  `untrusted_data` JSON envelope (`chatbot/safety.py`), and the system prompt
+  tells the model to never follow instructions found inside it. Cleaning drops
+  invisible characters used to hide instructions (zero-width, bidirectional
+  overrides, Unicode tag characters) and replaces images. Stored history keeps
+  the original results.
 - Data tools are read-only, so a successful injection cannot change data.
 - User identity and permissions are enforced outside the model.
 - The UI does not load remote images or auto-follow links from model output,
   which closes the usual data-exfiltration channel.
-- The eval set contains documents with injected instructions, so regressions
-  are caught.
+- The seed documents include injected instructions, and opt-in `llm` tests
+  check that defended models ignore them while an undefended small model does
+  not, so the tests stay meaningful.
 
 ## 4. Software design patterns
 

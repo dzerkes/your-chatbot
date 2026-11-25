@@ -14,11 +14,15 @@ All important changes to this project are recorded here, newest first.
 
 | Plan id | Commit | Type | Change |
 |---|---|---|---|
-| C20 | Pending | Added | `search_docs` tool: hybrid retrieval, reranking of the top fused hits, and paginated compact hits (title, section, source, snippet, chunk id, score) with cursors bound to the user, query and filters. The system prompt asks for bracketed title and section citations and "no document" instead of guesses. |
-| C20 | Pending | Added | Reranker strategies `none`, `local` (fastembed cross-encoder) and `api` (Cohere-compatible `/rerank`), selected by `RERANKER`. |
-| C20 | Pending | Security | Dev tokens carry groups (`token:identity:group|group`) and the CLI has `--groups`; search access comes only from these, never from tool arguments. |
-| C20 | Pending | Decision | D5: local `Xenova/ms-marco-MiniLM-L-6-v2` on the top 20, MRR@10 0.931 against 0.915 without a reranker. |
-| C20 | Pending | Changed | The backend image installs `chatbot[local-embeddings]` and keeps downloaded models in the `model_cache` volume. |
+| C21 | Pending | Security | Tool results are cleaned (invisible characters, images) and wrapped in an `untrusted_data` envelope before each model call; stored history is unchanged. The system prompt never follows instructions found there and never outputs images. |
+| C21 | Pending | Security | The chat UI renders text without images, closing zero-click exfiltration through image URLs. |
+| C21 | Pending | Added | Three adversarial seed documents (formatting hijack, link exfiltration with a fake closing tag, fake system message with an invisible tag-character instruction) and opt-in `llm` tests with an undefended control. |
+| C21 | Pending | Changed | `search_docs` drops model-supplied `tags` and uses flat `limit`/`cursor` arguments; invalid tool arguments name the failing fields without echoing values. |
+| C20 | `f56dfc8` | Added | `search_docs` tool: hybrid retrieval, reranking of the top fused hits, and paginated compact hits (title, section, source, snippet, chunk id, score) with cursors bound to the user, query and filters. The system prompt asks for bracketed title and section citations and "no document" instead of guesses. |
+| C20 | `f56dfc8` | Added | Reranker strategies `none`, `local` (fastembed cross-encoder) and `api` (Cohere-compatible `/rerank`), selected by `RERANKER`. |
+| C20 | `f56dfc8` | Security | Dev tokens carry groups (`token:identity:group|group`) and the CLI has `--groups`; search access comes only from these, never from tool arguments. |
+| C20 | `f56dfc8` | Decision | D5: local `Xenova/ms-marco-MiniLM-L-6-v2` on the top 20, MRR@10 0.931 against 0.915 without a reranker. |
+| C20 | `f56dfc8` | Changed | The backend image installs `chatbot[local-embeddings]` and keeps downloaded models in the `model_cache` volume. |
 | C19 | `7164598` | Added | Hybrid retriever: Postgres full-text leg (any stemmed term, behind a `LexicalSearch` interface) and pgvector cosine leg with iterative HNSW scan, run concurrently on the read-only role and merged with reciprocal rank fusion. |
 | C19 | `7164598` | Security | The caller's groups, plus optional source-prefix and tag filters, are applied inside both SQL queries; a caller with no groups gets nothing. Tested for every labeled query across five group sets. |
 | C19 | `7164598` | Added | 24-question labeled set with a test that checks hybrid recall@10 and exact-term ranking against each leg; CI caches the local embedding model. |
