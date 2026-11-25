@@ -14,10 +14,12 @@ All important changes to this project are recorded here, newest first.
 
 | Plan id | Commit | Type | Change |
 |---|---|---|---|
-| C23 | Pending | Added | Context pipeline (`CONTEXT_STRATEGY=summary,compact_tools`, default): tool results from earlier turns become one-line notes, a running summary written by `LLM_SUMMARY_MODEL` replaces older turns in large steps (turn trigger or 80% of the token budget), and a final budget guard. |
-| C23 | Pending | Added | Prompt caching: Anthropic cache breakpoints after tools, system prompt and conversation; OpenAI `prompt_cache_key` per session. `PROMPT_CACHING` toggles it. |
-| C23 | Pending | Added | Migration for `summary_through_sequence` and `summary_updated_at` on sessions, and a forward-only `update_summary` store method; `update_session` now changes only the title. |
-| C23 | Pending | Changed | Token estimates count tool results wrapped as sent; summary model usage is added to the turn's usage. |
+| C24 | Pending | Added | User memory behind `MEMORY_ENABLED`: `memory` tool (remember, recall, forget), `user_memory` table, recent facts in the system prompt, `GET/DELETE /memories` and a "What I remember" UI panel. |
+| C24 | Pending | Security | `remember` must quote the user's own words, checked against what they typed in the session, so document or tool text cannot become a memory; the app role cannot update facts, the read-only role cannot read them, and the tool runs in-process so the MCP server stays read-only. |
+| C23 | `c49396e` | Added | Context pipeline (`CONTEXT_STRATEGY=summary,compact_tools`, default): tool results from earlier turns become one-line notes, a running summary written by `LLM_SUMMARY_MODEL` replaces older turns in large steps (turn trigger or 80% of the token budget), and a final budget guard. |
+| C23 | `c49396e` | Added | Prompt caching: Anthropic cache breakpoints after tools, system prompt and conversation; OpenAI `prompt_cache_key` per session. `PROMPT_CACHING` toggles it. |
+| C23 | `c49396e` | Added | Migration for `summary_through_sequence` and `summary_updated_at` on sessions, and a forward-only `update_summary` store method; `update_session` now changes only the title. |
+| C23 | `c49396e` | Changed | Token estimates count tool results wrapped as sent; summary model usage is added to the turn's usage. |
 | C22 | `feb127a` | Added | `mcp_servers` package and `mcp` Compose service serving `query_projects` and `search_docs` over stateless streamable HTTP, from the same `Tool` objects used in-process; `TOOLS_TRANSPORT` selects in-process or MCP. |
 | C22 | `feb127a` | Security | Each MCP request carries a short-lived HS256 token signed by the backend (user, groups, session, turn, trace); the server verifies it before handling any message and builds `ToolContext` only from it. Only the MCP service holds the read-only role and models. |
 | C22 | `feb127a` | Added | `McpToolset`/`McpTool` client behind the existing tool interface, `python -m mcp_servers.token` for external clients, and parity tests running the same agent tests on both transports. |

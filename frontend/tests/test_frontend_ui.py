@@ -20,6 +20,8 @@ class FakeApi:
         self.messages: dict[str, list[dict[str, Any]]] = {}
         self.prompts: list[str] = []
         self.failure: str | None = None
+        self.memory_enabled = False  # the server default
+        self.memories: dict[str, list[dict[str, Any]]] = {"alice": [], "bob": []}
 
     def request(self, request: httpx.Request) -> httpx.Response:
         owner = {"Bearer alice-token": "alice", "Bearer bob-token": "bob"}.get(
@@ -27,6 +29,15 @@ class FakeApi:
         )
         if owner is None:
             return httpx.Response(401)
+        if request.url.path.startswith("/memories"):
+            if not self.memory_enabled:
+                return httpx.Response(404, json={"detail": "Memory is disabled"})
+            if request.method == "GET":
+                return httpx.Response(200, json=self.memories[owner])
+            memory_id = int(request.url.path.rsplit("/", 1)[1])
+            before = len(self.memories[owner])
+            self.memories[owner] = [m for m in self.memories[owner] if m["id"] != memory_id]
+            return httpx.Response(204 if len(self.memories[owner]) < before else 404)
         if request.url.path == "/sessions":
             if request.method == "GET":
                 return httpx.Response(
@@ -166,3 +177,31 @@ def test_stream_failure_keeps_partial_reply_and_does_not_retry(
     assert not app.exception and app.error
     assert any("Partial reply" in element.value for element in app.markdown)
     assert service.prompts == ["Find projects"]
+
+
+def test_memory_panel_is_hidden_when_memory_is_off(service: FakeApi) -> None:
+    app = AppTest.from_file(str(APP), default_timeout=10).run()
+    app.sidebar.text_input(key="access_token").input("alice-token").run()
+    assert not app.exception
+    assert not [e for e in app.sidebar.expander if "remember" in e.label]
+
+
+def test_memory_panel_lists_facts_and_forgets_one(service: FakeApi) -> None:
+    service.memory_enabled = True
+    service.memories["alice"] = [
+        {"id": 1, "fact": "Works on the Research Portal", "created_at": "2026-11-20T10:00:00Z"},
+        {"id": 2, "fact": "Prefers bullet points", "created_at": "2026-11-21T10:00:00Z"},
+    ]
+    service.memories["bob"] = [
+        {"id": 3, "fact": "Bob's fact", "created_at": "2026-11-21T10:00:00Z"}
+    ]
+    app = AppTest.from_file(str(APP), default_timeout=10).run()
+    app.sidebar.text_input(key="access_token").input("alice-token").run()
+    [panel] = [e for e in app.sidebar.expander if "remember" in e.label]
+    assert panel.label == "What I remember (2)"
+    shown = [m.value for m in app.sidebar.markdown]
+    assert "Works on the Research Portal" in shown and "Bob's fact" not in shown
+    app.sidebar.button(key="forget-1").click().run()
+    assert [m["id"] for m in service.memories["alice"]] == [2]
+    [panel] = [e for e in app.sidebar.expander if "remember" in e.label]
+    assert panel.label == "What I remember (1)"

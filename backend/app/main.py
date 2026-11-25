@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 
 from app.auth import parse_dev_tokens
 from app.deps import Runtime
-from app.routes import chat, health, sessions
+from app.routes import chat, health, memories, sessions
 
 type ChatbotFactory = Callable[[Settings], AbstractAsyncContextManager[Agent]]
 logger = logging.getLogger(__name__)
@@ -41,6 +41,7 @@ def create_app(
     application.include_router(health.router)
     application.include_router(sessions.router)
     application.include_router(chat.router)
+    application.include_router(memories.router)
 
     @application.exception_handler(ChatbotError)
     async def chatbot_error(request: Request, exc: ChatbotError) -> JSONResponse:

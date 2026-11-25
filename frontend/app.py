@@ -129,6 +129,30 @@ def stream_reply(client: ApiClient, session_id: UUID, prompt: str) -> tuple[bool
     return terminal, failure
 
 
+def _memory_panel(client: ApiClient) -> None:
+    """Sidebar list of remembered facts with a forget button each; hidden when off."""
+    try:
+        facts = client.list_memories()
+    except ApiError:
+        st.caption("Memory is unavailable right now.")
+        return
+    if facts is None:
+        return
+    with st.expander(f"What I remember ({len(facts)})", expanded=False):
+        if not facts:
+            st.caption("Nothing yet. Tell me something about yourself and ask me to remember it.")
+        for fact in facts:
+            text, button = st.columns([5, 1])
+            text.markdown(without_images(fact.fact))
+            if button.button("✕", key=f"forget-{fact.id}", help="Forget this"):
+                try:
+                    client.delete_memory(fact.id)
+                except ApiError as exc:
+                    st.error(str(exc))
+                else:
+                    st.rerun()
+
+
 def _select(session_id: UUID | None) -> None:
     st.session_state.pop("turn_error", None)
     if session_id is None:
@@ -181,6 +205,7 @@ def main() -> None:
                 st.rerun()
             if st.button("Refresh conversations", key="refresh", width="stretch"):
                 st.rerun()
+            _memory_panel(client)
             for session in sessions:
                 title = session.title or f"Chat · {session.created_at:%b %d, %H:%M}"
                 if st.button(
