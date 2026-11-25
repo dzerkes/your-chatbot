@@ -29,13 +29,6 @@ MAX_PAGE = 10
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s")
 
 
-class SearchDocsPagination(DomainModel):
-    limit: int | None = Field(
-        default=None, ge=1, le=MAX_PAGE, description="Results per page (default 5)"
-    )
-    cursor: str | None = Field(default=None, min_length=1, max_length=512)
-
-
 class SearchDocsInput(ToolInput):
     query: str = Field(
         min_length=1,
@@ -47,14 +40,21 @@ class SearchDocsInput(ToolInput):
         min_length=1,
         max_length=200,
         pattern=r"^[A-Za-z0-9][A-Za-z0-9_./-]*$",
-        description="Only documents under this folder, e.g. 'engineering/' or 'handbook/'",
+        description=(
+            "Only documents under this folder, e.g. 'handbook/'. Leave it out unless the "
+            "user names a folder; a wrong folder returns nothing."
+        ),
     )
-    tags: list[str] = Field(
-        default_factory=list,
-        max_length=5,
-        description="Only documents carrying all of these tags, e.g. ['policy']",
+    # Flat fields: small models often misplace a nested pagination object.
+    limit: int | None = Field(
+        default=None, ge=1, le=MAX_PAGE, description="Results per page (default 5)"
     )
-    pagination: SearchDocsPagination = Field(default_factory=SearchDocsPagination)
+    cursor: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=512,
+        description="next_cursor from the previous page, with the same query and source_prefix",
+    )
 
     @field_validator("query")
     @classmethod
@@ -63,14 +63,6 @@ class SearchDocsInput(ToolInput):
         if not value:
             raise ValueError("Query cannot be blank")
         return value
-
-    @field_validator("tags")
-    @classmethod
-    def clean_tags(cls, value: list[str]) -> list[str]:
-        tags = sorted({tag.strip().lower() for tag in value if tag.strip()})
-        if any(len(tag) > 50 for tag in tags):
-            raise ValueError("Tags must be at most 50 characters")
-        return tags
 
 
 class DocumentHit(DomainModel):
@@ -146,10 +138,10 @@ class SearchDocs:
         )
 
     async def search(self, inputs: SearchDocsInput, context: ToolContext) -> ToolPage:
+        # Tag filters exist in the retriever but are not offered to the model: it cannot
+        # know the tag vocabulary, and guessed tags silently returned nothing.
         filters = SearchFilters(
-            groups=tuple(context.user.groups),
-            source_prefix=inputs.source_prefix,
-            tags=tuple(inputs.tags),
+            groups=tuple(context.user.groups), source_prefix=inputs.source_prefix
         )
         scope = json.dumps(
             {
@@ -157,13 +149,12 @@ class SearchDocs:
                 "user": str(context.user.id),
                 "query": inputs.query,
                 "source_prefix": inputs.source_prefix,
-                "tags": inputs.tags,
             },
             sort_keys=True,
             separators=(",", ":"),
         )
-        offset = decode_cursor(inputs.pagination.cursor, scope=scope)
-        limit = inputs.pagination.limit or self.page_size
+        offset = decode_cursor(inputs.cursor, scope=scope)
+        limit = inputs.limit or self.page_size
         try:
             fused = await self.retriever.search(inputs.query, filters)
             ranked = await self.reranker.rerank(inputs.query, fused[: self.rerank_candidates])

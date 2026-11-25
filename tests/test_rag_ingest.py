@@ -189,13 +189,15 @@ def test_cli_loads_seed_documents_and_a_second_run_changes_nothing(db: Settings)
     first = run_cli(db, "db/seed/documents")
     assert first.returncode == 0, first.stderr
     assert first.stdout.strip() == (
-        f"7 documents: 7 added, 0 updated, 0 unchanged; {expected_chunks} chunks written"
+        f"10 documents: 10 added, 0 updated, 0 unchanged; {expected_chunks} chunks written"
     )
     before = snapshot(db)
 
     second = run_cli(db, "db/seed/documents")
     assert second.returncode == 0, second.stderr
-    assert second.stdout.strip() == "7 documents: 0 added, 0 updated, 7 unchanged; 0 chunks written"
+    assert (
+        second.stdout.strip() == "10 documents: 0 added, 0 updated, 10 unchanged; 0 chunks written"
+    )
     assert snapshot(db) == before
 
     assert rows(db, "SELECT count(*) FROM rag.chunks") == [(expected_chunks,)]

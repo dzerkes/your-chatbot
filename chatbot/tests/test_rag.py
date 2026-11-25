@@ -145,7 +145,7 @@ def test_load_documents_uses_relative_sources_and_skips_other_files(tmp_path: Pa
 
 def test_seed_documents_parse_and_include_restricted_ones() -> None:
     documents = {d.source: d for d in load_documents(SEED)}
-    assert len(documents) == 7
+    assert len(documents) == 10  # 7 regular, 3 adversarial (C21)
     assert documents["handbook/employee-handbook.md"].groups == ("employees",)
     assert documents["finance/pricing-guidelines-2026.md"].groups == ("finance", "leadership")
     assert documents["hr/salary-bands.md"].groups == ("hr", "leadership")

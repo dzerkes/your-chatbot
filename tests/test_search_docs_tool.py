@@ -112,7 +112,7 @@ def as_user(user: User) -> ToolContext:
 async def every_hit(tool: Tool[SearchDocsInput], user: User, query: str) -> list[dict[str, Any]]:
     """Follow next_cursor to the end, as the model would."""
     hits: list[dict[str, Any]] = []
-    arguments: dict[str, Any] = {"query": query, "pagination": {"limit": 10}}
+    arguments: dict[str, Any] = {"query": query, "limit": 10}
     while True:
         page = await tool.execute(arguments, as_user(user))
         hits.extend(page.items)  # type: ignore[arg-type]
@@ -120,7 +120,7 @@ async def every_hit(tool: Tool[SearchDocsInput], user: User, query: str) -> list
         if page.next_cursor is None:
             assert len(hits) == page.total
             return hits
-        arguments = {"query": query, "pagination": {"limit": 10, "cursor": page.next_cursor}}
+        arguments = {"query": query, "limit": 10, "cursor": page.next_cursor}
 
 
 async def test_user_without_access_never_sees_restricted_documents(
@@ -166,7 +166,7 @@ async def test_pages_are_disjoint_and_stable(search_tool: Tool[SearchDocsInput])
         h["chunk_id"] for h in await every_hit(search_tool, BOB, "incident response and deployment")
     ]
     first = await search_tool.execute(
-        {"query": "incident response and deployment", "pagination": {"limit": 2}}, as_user(BOB)
+        {"query": "incident response and deployment", "limit": 2}, as_user(BOB)
     )
     assert [h["chunk_id"] for h in first.items] == ids[:2]  # type: ignore[index, call-overload]
 
@@ -198,9 +198,7 @@ async def test_reranked_results_keep_quality_on_the_labeled_set(
     )
     total = 0.0
     for case in CASES:
-        page = await search_tool.execute(
-            {"query": case["query"], "pagination": {"limit": 10}}, as_user(everyone)
-        )
+        page = await search_tool.execute({"query": case["query"], "limit": 10}, as_user(everyone))
         headings = [
             f"{h['title']} > {h['section']}" if h["section"] else h["title"]  # type: ignore[index, call-overload]
             for h in page.items
