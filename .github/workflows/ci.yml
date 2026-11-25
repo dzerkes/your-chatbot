@@ -69,6 +69,11 @@ jobs:
       - run: uv sync --locked
       - name: Use the example environment (placeholder secrets, no API keys)
         run: cp .env.example .env
+      - name: Cache the local embedding model used by retrieval tests
+        uses: actions/cache@v4
+        with:
+          path: .cache/fastembed
+          key: fastembed-${{ hashFiles('.env.example') }}
       - name: Start Postgres, run migrations and integration tests
         run: make test-integration
       - name: Show Compose logs on failure

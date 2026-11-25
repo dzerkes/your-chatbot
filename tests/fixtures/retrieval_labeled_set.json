@@ -1,0 +1,29 @@
+{
+  "description": "Questions over db/seed/documents, each labelled with the heading path of the chunk that answers it. 'exact' questions hinge on a name, code or number; 'paraphrase' questions share few words with the answer.",
+  "cases": [
+    {"kind": "exact", "query": "deployctl rollback command", "expected": "Deployment runbook > Deploying"},
+    {"kind": "exact", "query": "SEV2", "expected": "Incident response guide > Severity levels"},
+    {"kind": "exact", "query": "28 percent gross margin", "expected": "Pricing guidelines 2026 > Minimum margin"},
+    {"kind": "exact", "query": "Harbor Logistics release days", "expected": "Deployment runbook > Before you deploy"},
+    {"kind": "exact", "query": "security@company.example", "expected": "Data handling policy > Incidents"},
+    {"kind": "exact", "query": "600 euro home-office budget", "expected": "Employee handbook > Equipment"},
+    {"kind": "exact", "query": "Maya Lindqvist", "expected": "Research Portal project brief > Team and contacts"},
+    {"kind": "exact", "query": "20 percent risk buffer", "expected": "Pricing guidelines 2026 > Fixed-price projects"},
+    {"kind": "exact", "query": "Level 3 staff engineer", "expected": "Salary bands > Bands"},
+    {"kind": "exact", "query": "blameless review", "expected": "Incident response guide > After an incident"},
+    {"kind": "paraphrase", "query": "how many vacation days do I get per year", "expected": "Employee handbook > Leave > Annual leave"},
+    {"kind": "paraphrase", "query": "what should I do if I am ill", "expected": "Employee handbook > Leave > Sick leave"},
+    {"kind": "paraphrase", "query": "can I work from another country", "expected": "Employee handbook > Working hours and remote work"},
+    {"kind": "paraphrase", "query": "who do I wake up when production is completely broken", "expected": "Incident response guide > Severity levels"},
+    {"kind": "paraphrase", "query": "time off after having a baby", "expected": "Employee handbook > Leave > Parental leave"},
+    {"kind": "paraphrase", "query": "may I paste customer information into a public chatbot", "expected": "Data handling policy > Sharing data"},
+    {"kind": "paraphrase", "query": "my laptop was stolen", "expected": "Employee handbook > Equipment"},
+    {"kind": "paraphrase", "query": "how much do we charge per day for a senior developer", "expected": "Pricing guidelines 2026 > Day rates"},
+    {"kind": "paraphrase", "query": "when do pay raises happen", "expected": "Salary bands > Reviews"},
+    {"kind": "paraphrase", "query": "where am I allowed to save client files", "expected": "Data handling policy > Storing data"},
+    {"kind": "paraphrase", "query": "what do I do once a release is live", "expected": "Deployment runbook > After you deploy"},
+    {"kind": "paraphrase", "query": "what could delay moving the old reports", "expected": "Research Portal project brief > Risks"},
+    {"kind": "paraphrase", "query": "can I get reimbursed for wine at a work dinner", "expected": "Employee handbook > Expenses"},
+    {"kind": "paraphrase", "query": "who has to approve a big price reduction", "expected": "Pricing guidelines 2026 > Discounts"}
+  ]
+}

@@ -42,7 +42,7 @@ from chatbot.config import Settings
 from chatbot.errors import ChatbotError, IngestError
 from chatbot.logging import configure_logging
 from chatbot.rag.chunking import CHUNKER_VERSION, Chunk, chunk_markdown
-from chatbot.rag.embeddings import Embedder, build_embedder
+from chatbot.rag.embeddings import Embedder, build_embedder, vector_literal
 
 _KEY = re.compile(r"^[a-z][a-z0-9_]*$")
 _GROUP = re.compile(r"^[a-z0-9][a-z0-9_.-]*$")
@@ -150,10 +150,6 @@ def content_hash(document: SourceDocument, embedder: Embedder) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def _vector_literal(vector: Sequence[float]) -> str:
-    return "[" + ",".join(format(x, ".8g") for x in vector) + "]"
-
-
 async def _check_schema(conn: AsyncConnection, embedder: Embedder) -> None:
     cursor = await conn.execute(
         "SELECT a.atttypmod FROM pg_attribute AS a "
@@ -243,7 +239,7 @@ async def ingest_documents(
                                 chunk.position,
                                 chunk.heading,
                                 chunk.text,
-                                _vector_literal(vector),
+                                vector_literal(vector),
                                 list(document.groups),
                             )
                             for chunk, vector in zip(chunks, vectors, strict=True)
