@@ -26,6 +26,7 @@ from chatbot.errors import (
     StoreError,
     ToolError,
 )
+from chatbot.limits import ChatLimits
 from chatbot.llm.base import (
     LLMProvider,
     LLMRequest,
@@ -108,7 +109,7 @@ class Agent:
         self._locks: WeakValueDictionary[UUID, asyncio.Lock] = WeakValueDictionary()
 
     async def respond(
-        self, session_id: UUID, user_message: str, user: User
+        self, session_id: UUID, user_message: str, user: User, *, limits: ChatLimits | None = None
     ) -> AsyncGenerator[Event, None]:
         """Stream one turn. Consume or close the iterator to finish persistence/cleanup."""
         lock = self._locks.setdefault(session_id, asyncio.Lock())
@@ -118,7 +119,7 @@ class Agent:
                 self.tracing.turn(turn, user) as span,
                 log_context(session_id=session_id, turn_id=turn.id, trace_id=turn.trace_id),
             ):
-                async with aclosing(self._respond(turn, user_message, user)) as events:
+                async with aclosing(self._respond(turn, user_message, user, limits)) as events:
                     async for event in events:
                         if isinstance(event, TurnFailed):
                             span.set({"chatbot.turn.status": "failed"})
@@ -184,7 +185,9 @@ class Agent:
             )
             return summary
 
-    async def _respond(self, turn: Turn, text: str, user: User) -> AsyncGenerator[Event, None]:
+    async def _respond(
+        self, turn: Turn, text: str, user: User, limits: ChatLimits | None
+    ) -> AsyncGenerator[Event, None]:
         started = monotonic()
         ids: _EventIDs = {
             "session_id": turn.session_id,
@@ -198,6 +201,8 @@ class Agent:
             if session is None:
                 raise NotFoundError("Session not found")
             history = await self.store.list_messages(turn.session_id, user.id)
+            if limits is not None:
+                await self.store.reserve_turn(turn, user.id, limits)
         except ChatbotError as exc:
             yield TurnFailed(**ids, code=exc.code, message=str(exc), retryable=exc.retryable)
             return
@@ -238,7 +243,6 @@ class Agent:
             messages.append(message)
 
         append("user", [Text(text=text)])
-        system = self.system + await self._memory_context(user)
         summary = _stored_summary(session)
         context = ToolContext(
             user=user,
@@ -255,6 +259,7 @@ class Agent:
         }
         failure: ChatbotError | None = None
         try:
+            system = self.system + await self._memory_context(user)
             if self.summarizer is not None:
                 summary = await self._update_summary(
                     turn, user, history, messages, summary, system, record_usage

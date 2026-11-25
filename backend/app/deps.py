@@ -5,6 +5,7 @@ from typing import Annotated
 
 from chatbot.agent import Agent
 from chatbot.config import Settings
+from chatbot.limits import ChatLimits
 from fastapi import Depends, HTTPException, Request
 
 
@@ -30,3 +31,13 @@ def get_runtime(request: Request) -> Runtime:
 
 
 RuntimeDep = Annotated[Runtime, Depends(get_runtime)]
+
+
+def chat_limits(runtime: RuntimeDep) -> ChatLimits:
+    return ChatLimits(
+        runtime.settings.rate_limit_requests_per_minute,
+        runtime.settings.cost_cap_usd_per_user_per_day,
+    )
+
+
+ChatLimitsDep = Annotated[ChatLimits, Depends(chat_limits)]

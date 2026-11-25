@@ -5,6 +5,7 @@ import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -32,7 +33,7 @@ from chatbot.tools.base import Tool, ToolContext, ToolInput
 from chatbot.tools.pagination import ToolPage
 from chatbot.tools.registry import ToolRegistry
 from chatbot.tracing import Tracing
-from chatbot.types import Event, ToolUse, Usage, User
+from chatbot.types import Event, ToolUse, TurnFailed, Usage, User
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from opentelemetry.sdk.resources import Resource
@@ -393,3 +394,32 @@ def test_memory_endpoints_are_404_when_memory_is_off() -> None:
         response = client.get("/memories", headers=ALICE)
         assert response.status_code == 404 and response.json()["detail"] == "Memory is disabled"
         assert client.delete("/memories/1", headers=ALICE).status_code == 404
+
+
+@pytest.mark.parametrize("limit", ["rate", "spend"])
+def test_chat_limits_apply_across_sessions_before_generation(
+    limit: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("RATE_LIMIT_REQUESTS_PER_MINUTE", "1" if limit == "rate" else "20")
+    script = answer()
+    script[1] = LLMUsage(usage=Usage(input_tokens=10), cost_usd=Decimal("2"))
+    provider = ScriptedProvider([script if limit == "spend" else answer(), answer()])
+    with TestClient(api(provider).app) as client:
+
+        def chat_new(headers: dict[str, str]) -> list[Event]:
+            session = client.post("/sessions", json={}, headers=headers).json()["id"]
+            return parse_events(
+                client.post(
+                    f"/sessions/{session}/chat", json={"message": "Hi"}, headers=headers
+                ).text
+            )
+
+        assert chat_new(ALICE)[-1].type == "turn_completed"
+        blocked = chat_new(ALICE)
+        assert len(blocked) == 1 and isinstance(blocked[0], TurnFailed)
+        assert blocked[0].code == (
+            "rate_limit_exceeded" if limit == "rate" else "cost_cap_exceeded"
+        )
+        assert "Try again" in blocked[0].message
+        assert chat_new(BOB)[-1].type == "turn_completed"
+        assert len(provider.requests) == 2

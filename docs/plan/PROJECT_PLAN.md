@@ -424,7 +424,7 @@ real tracing, before making any single layer good.
   and interrupted streams. CLI integration tests compare the priced usage of a
   multi-step turn with its Postgres record and exported generation spans.
 
-### [ ] C26 `feat(limits): add per-user rate limits and cost caps`
+### [x] C26 `feat(limits): add per-user rate limits and cost caps`
 
 - **Goal:** no single user can run up the bill.
 - **Files:** `chatbot/src/chatbot/limits.py`, backend dependency.
@@ -433,6 +433,9 @@ real tracing, before making any single layer good.
   the UI when a limit is hit.
 - **Done when:** tests show a blocked request after the limit, and the UI
   shows a readable message.
+- **Verification:** concurrent reservations across sessions exercise both history stores.
+  API tests cover user isolation and rejection before generation. A Streamlit test
+  checks the spending-limit message survives the conversation reload.
 
 ### [ ] C27 `feat(audit): add append-only audit log`
 

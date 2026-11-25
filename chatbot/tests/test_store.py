@@ -1,7 +1,9 @@
 """Shared history contract for the in-memory and Postgres stores."""
 
+import asyncio
 import subprocess
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -10,6 +12,7 @@ import psycopg
 import pytest
 from chatbot.config import Settings
 from chatbot.errors import ConflictError, NotFoundError
+from chatbot.limits import ChatLimits, CostCapExceeded, RateLimitExceeded
 from chatbot.store.base import HistoryStore, Turn
 from chatbot.store.memory import MemoryStore
 from chatbot.store.memory_store import (
@@ -24,7 +27,33 @@ from psycopg.conninfo import make_conninfo
 ROOT = Path(__file__).resolve().parents[2]
 
 
+async def exercise_limits(store: HistoryStore) -> None:
+    user = await store.upsert_user(User(external_id=str(uuid4()), display_name="Limited"))
+    first = await store.create_session(user.id)
+    second = await store.create_session(user.id)
+    now = datetime(2026, 11, 25, 23, 58, tzinfo=UTC)
+    limits = ChatLimits(1, Decimal("2"))
+    turns = [Turn(session_id=s.id, created_at=now) for s in (first, second)]
+    results = await asyncio.gather(
+        *(store.reserve_turn(t, user.id, limits) for t in turns), return_exceptions=True
+    )
+    assert results.count(None) == 1
+    assert sum(isinstance(r, RateLimitExceeded) for r in results) == 1
+    accepted = turns[results.index(None)]
+    accepted.status = "failed"
+    accepted.cost_usd = Decimal("2")
+    await store.save_turn(accepted, [], user.id)
+    with pytest.raises(CostCapExceeded):
+        await store.reserve_turn(
+            Turn(session_id=second.id, created_at=now + timedelta(minutes=1)), user.id, limits
+        )
+    await store.reserve_turn(
+        Turn(session_id=second.id, created_at=now + timedelta(minutes=2)), user.id, limits
+    )
+
+
 async def exercise_history(store: HistoryStore) -> None:
+    await exercise_limits(store)
     external_id = f"c06-{uuid4().hex}"
     alice = await store.upsert_user(
         User(external_id=external_id, display_name="Alice", groups=["engineering"])

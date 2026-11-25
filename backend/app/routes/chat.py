@@ -13,7 +13,7 @@ from starlette.requests import ClientDisconnect
 from starlette.types import Receive, Scope, Send
 
 from app.auth import CurrentUser
-from app.deps import RuntimeDep
+from app.deps import ChatLimitsDep, RuntimeDep
 from app.routes.sessions import OwnedSession
 
 router = APIRouter(prefix="/sessions", tags=["chat"])
@@ -59,10 +59,13 @@ async def chat(
     session: OwnedSession,
     user: CurrentUser,
     runtime: RuntimeDep,
+    limits: ChatLimitsDep,
 ) -> StreamingResponse:
     async def events() -> AsyncGenerator[str, None]:
         yield ": connected\n\n"
-        async with aclosing(runtime.chatbot.respond(session.id, payload.message, user)) as stream:
+        async with aclosing(
+            runtime.chatbot.respond(session.id, payload.message, user, limits=limits)
+        ) as stream:
             async for event in stream:
                 await anyio.lowlevel.checkpoint()
                 yield f"event: {event.type}\ndata: {event.model_dump_json()}\n\n"
