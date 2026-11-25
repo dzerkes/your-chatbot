@@ -16,6 +16,9 @@ class Session(DomainModel):
     owner_id: UUID
     title: str | None = None
     summary: str | None = None
+    # Messages with sequence <= this are covered by ``summary`` (set together).
+    summary_through_sequence: int | None = Field(default=None, ge=0)
+    summary_updated_at: AwareDatetime | None = None
     created_at: AwareDatetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: AwareDatetime = Field(default_factory=lambda: datetime.now(UTC))
 
@@ -50,7 +53,15 @@ class SessionStore(Protocol):
         """List one user's sessions, newest activity first."""
 
     async def update_session(self, session: Session) -> Session:
-        """Update title and summary for an existing session."""
+        """Update the title of an existing session."""
+
+    async def update_summary(
+        self, session_id: UUID, owner_id: UUID, summary: str, through_sequence: int
+    ) -> Session:
+        """Store a running summary covering messages up to through_sequence.
+
+        Coverage only moves forward: an older summary never replaces a newer one.
+        """
 
 
 class MessageStore(Protocol):

@@ -72,7 +72,8 @@ class PostgresStore:
                         """
                         INSERT INTO sessions (id, owner_id, title, summary, created_at, updated_at)
                         VALUES (%s, %s, %s, %s, %s, %s)
-                        RETURNING id, owner_id, title, summary, created_at, updated_at
+                        RETURNING id, owner_id, title, summary,
+                        summary_through_sequence, summary_updated_at, created_at, updated_at
                         """,
                         (
                             session.id,
@@ -94,7 +95,8 @@ class PostgresStore:
             async with conn.cursor(row_factory=dict_row) as cursor:
                 await cursor.execute(
                     """
-                    SELECT id, owner_id, title, summary, created_at, updated_at
+                    SELECT id, owner_id, title, summary,
+                        summary_through_sequence, summary_updated_at, created_at, updated_at
                     FROM sessions WHERE id = %s AND owner_id = %s
                     """,
                     (session_id, owner_id),
@@ -107,7 +109,8 @@ class PostgresStore:
             async with conn.cursor(row_factory=dict_row) as cursor:
                 await cursor.execute(
                     """
-                    SELECT id, owner_id, title, summary, created_at, updated_at
+                    SELECT id, owner_id, title, summary,
+                        summary_through_sequence, summary_updated_at, created_at, updated_at
                     FROM sessions WHERE owner_id = %s ORDER BY updated_at DESC, id DESC
                     """,
                     (owner_id,),
@@ -119,16 +122,42 @@ class PostgresStore:
             async with conn.cursor(row_factory=dict_row) as cursor:
                 await cursor.execute(
                     """
-                    UPDATE sessions SET title = %s, summary = %s, updated_at = now()
+                    UPDATE sessions SET title = %s, updated_at = now()
                     WHERE id = %s AND owner_id = %s
-                    RETURNING id, owner_id, title, summary, created_at, updated_at
+                    RETURNING id, owner_id, title, summary,
+                        summary_through_sequence, summary_updated_at, created_at, updated_at
                     """,
-                    (session.title, session.summary, session.id, session.owner_id),
+                    (session.title, session.id, session.owner_id),
                 )
                 row = await cursor.fetchone()
                 if row is None:
                     raise NotFoundError("Session not found")
                 return Session.model_validate(row)
+
+    async def update_summary(
+        self, session_id: UUID, owner_id: UUID, summary: str, through_sequence: int
+    ) -> Session:
+        async with self._pool.connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cursor:
+                await cursor.execute(
+                    """
+                    UPDATE sessions
+                    SET summary = %s, summary_through_sequence = %s, summary_updated_at = now()
+                    WHERE id = %s AND owner_id = %s
+                      AND (summary_through_sequence IS NULL OR summary_through_sequence < %s)
+                    RETURNING id, owner_id, title, summary, summary_through_sequence,
+                        summary_updated_at, created_at, updated_at
+                    """,
+                    (summary, through_sequence, session_id, owner_id, through_sequence),
+                )
+                row = await cursor.fetchone()
+                if row is not None:
+                    return Session.model_validate(row)
+        # Not found, or a concurrent turn already stored a newer summary: return what is stored.
+        current = await self.get_session(session_id, owner_id)
+        if current is None:
+            raise NotFoundError("Session not found")
+        return current
 
     async def save_turn(self, turn: Turn, messages: Sequence[Message], owner_id: UUID) -> None:
         validate_turn_messages(turn, messages)

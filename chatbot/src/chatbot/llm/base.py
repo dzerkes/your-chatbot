@@ -27,6 +27,8 @@ class LLMRequest(DomainModel):
     tools: list[ToolDefinition] = Field(default_factory=list)
     max_output_tokens: PositiveInt = 2048
     timeout_seconds: PositiveFloat | None = None
+    # Set to enable prompt caching; requests sharing a key (one session) share a cache.
+    cache_key: str | None = Field(default=None, min_length=1, max_length=64)
 
 
 class LLMTextDelta(DomainModel):

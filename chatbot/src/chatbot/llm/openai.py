@@ -187,6 +187,9 @@ class OpenAIProvider:
                 instructions=request.system if request.system else omit,
                 input=items,
                 tools=tools if tools else omit,
+                # OpenAI caches long prefixes automatically; the key keeps one
+                # session's requests on the same cache.
+                prompt_cache_key=request.cache_key if request.cache_key is not None else omit,
                 max_output_tokens=request.max_output_tokens,
                 timeout=request.timeout_seconds
                 if request.timeout_seconds is not None

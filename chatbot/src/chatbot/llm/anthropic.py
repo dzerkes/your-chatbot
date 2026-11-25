@@ -5,8 +5,16 @@ import logging
 from collections.abc import AsyncIterator, Sequence
 from typing import Any, cast
 
-from anthropic import APIConnectionError, APIError, APIStatusError, AsyncAnthropic, not_given, omit
-from anthropic.types import MessageParam, ToolParam
+from anthropic import (
+    APIConnectionError,
+    APIError,
+    APIStatusError,
+    AsyncAnthropic,
+    Omit,
+    not_given,
+    omit,
+)
+from anthropic.types import MessageParam, TextBlockParam, ToolParam
 
 from chatbot.config import Settings
 from chatbot.errors import ProviderError
@@ -87,6 +95,40 @@ def _tool_params(tools: Sequence[ToolDefinition]) -> list[ToolParam]:
         }
         for tool in tools
     ]
+
+
+_EPHEMERAL = {"type": "ephemeral"}
+
+
+def _with_cache_breakpoints(
+    system: str, tools: list[ToolParam], messages: list[MessageParam]
+) -> tuple[list[TextBlockParam] | Omit, list[ToolParam], list[MessageParam]]:
+    """Mark the end of tools, of the system prompt and of the conversation as cacheable.
+
+    Anthropic caches the prefix up to each marked block (tools, then system, then
+    messages). The last marker moves forward every request; the next request
+    reads the cache up to where the previous one ended.
+    """
+    if tools:
+        tools = [*tools[:-1], cast(ToolParam, {**tools[-1], "cache_control": _EPHEMERAL})]
+    system_param: list[TextBlockParam] | Omit = (
+        [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
+        if system
+        else omit
+    )
+    if messages:
+        last: dict[str, Any] = dict(messages[-1])
+        content = last["content"]
+        blocks: list[dict[str, Any]] = (
+            [{"type": "text", "text": content}]
+            if isinstance(content, str)
+            else [dict(block) for block in content]
+        )
+        if blocks:
+            blocks[-1]["cache_control"] = _EPHEMERAL
+        last["content"] = blocks
+        messages = [*messages[:-1], cast(MessageParam, last)]
+    return system_param, tools, messages
 
 
 def _stop_reason(value: object) -> StopReason:
@@ -219,6 +261,9 @@ class AnthropicProvider:
     async def stream(self, request: LLMRequest) -> AsyncIterator[LLMEvent]:
         messages = _message_params(request.messages)
         tools = _tool_params(request.tools)
+        system: str | list[TextBlockParam] | Omit = request.system if request.system else omit
+        if request.cache_key is not None:
+            system, tools, messages = _with_cache_breakpoints(request.system, tools, messages)
         translator = _StreamTranslator()
         try:
             raw_stream = await self._client.messages.create(
@@ -226,7 +271,7 @@ class AnthropicProvider:
                 max_tokens=request.max_output_tokens,
                 messages=messages,
                 tools=tools if tools else omit,
-                system=request.system if request.system else omit,
+                system=system,
                 timeout=request.timeout_seconds
                 if request.timeout_seconds is not None
                 else not_given,

@@ -14,10 +14,14 @@ All important changes to this project are recorded here, newest first.
 
 | Plan id | Commit | Type | Change |
 |---|---|---|---|
-| C22 | Pending | Added | `mcp_servers` package and `mcp` Compose service serving `query_projects` and `search_docs` over stateless streamable HTTP, from the same `Tool` objects used in-process; `TOOLS_TRANSPORT` selects in-process or MCP. |
-| C22 | Pending | Security | Each MCP request carries a short-lived HS256 token signed by the backend (user, groups, session, turn, trace); the server verifies it before handling any message and builds `ToolContext` only from it. Only the MCP service holds the read-only role and models. |
-| C22 | Pending | Added | `McpToolset`/`McpTool` client behind the existing tool interface, `python -m mcp_servers.token` for external clients, and parity tests running the same agent tests on both transports. |
-| C22 | Pending | Fixed | Docker images could contain stale workspace code because uv's shared cache reused wheels until a pyproject.toml changed; all members now declare `tool.uv.cache-keys`. |
+| C23 | Pending | Added | Context pipeline (`CONTEXT_STRATEGY=summary,compact_tools`, default): tool results from earlier turns become one-line notes, a running summary written by `LLM_SUMMARY_MODEL` replaces older turns in large steps (turn trigger or 80% of the token budget), and a final budget guard. |
+| C23 | Pending | Added | Prompt caching: Anthropic cache breakpoints after tools, system prompt and conversation; OpenAI `prompt_cache_key` per session. `PROMPT_CACHING` toggles it. |
+| C23 | Pending | Added | Migration for `summary_through_sequence` and `summary_updated_at` on sessions, and a forward-only `update_summary` store method; `update_session` now changes only the title. |
+| C23 | Pending | Changed | Token estimates count tool results wrapped as sent; summary model usage is added to the turn's usage. |
+| C22 | `feb127a` | Added | `mcp_servers` package and `mcp` Compose service serving `query_projects` and `search_docs` over stateless streamable HTTP, from the same `Tool` objects used in-process; `TOOLS_TRANSPORT` selects in-process or MCP. |
+| C22 | `feb127a` | Security | Each MCP request carries a short-lived HS256 token signed by the backend (user, groups, session, turn, trace); the server verifies it before handling any message and builds `ToolContext` only from it. Only the MCP service holds the read-only role and models. |
+| C22 | `feb127a` | Added | `McpToolset`/`McpTool` client behind the existing tool interface, `python -m mcp_servers.token` for external clients, and parity tests running the same agent tests on both transports. |
+| C22 | `feb127a` | Fixed | Docker images could contain stale workspace code because uv's shared cache reused wheels until a pyproject.toml changed; all members now declare `tool.uv.cache-keys`. |
 | C21 | `e560bb6` | Security | Tool results are cleaned (invisible characters, images) and wrapped in an `untrusted_data` envelope before each model call; stored history is unchanged. The system prompt never follows instructions found there and never outputs images. |
 | C21 | `e560bb6` | Security | The chat UI renders text without images, closing zero-click exfiltration through image URLs. |
 | C21 | `e560bb6` | Added | Three adversarial seed documents (formatting hijack, link exfiltration with a fake closing tag, fake system message with an invisible tag-character instruction) and opt-in `llm` tests with an undefended control. |

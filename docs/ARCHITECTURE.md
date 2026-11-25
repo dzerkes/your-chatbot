@@ -172,9 +172,25 @@ each turn by a context strategy:
 | `compact_tools` | Replaces old tool results with a one-line note. |
 | `summary` | Summarizes older turns once past a threshold, stores the summary on the session, sends summary plus recent turns. |
 
-Strategies are composable and chosen by configuration. Summaries are made in
+Strategies are composable and chosen by configuration
+(`CONTEXT_STRATEGY=summary,compact_tools`, the default). Summaries are made in
 occasional large steps, not every turn, so the prompt prefix stays stable and
-prompt caching keeps working.
+prompt caching keeps working:
+
+- `compact_tools` compacts every earlier turn, not only old ones, so a turn's
+  compacted form never changes once it is history. The turn in progress keeps
+  full results.
+- `summary` folds all but the last `CONTEXT_KEEP_LAST_TURNS` turns into the
+  summary when `CONTEXT_SUMMARY_TRIGGER_TURNS` more have piled up, or earlier
+  when the context passes 80% of `CONTEXT_MAX_INPUT_TOKENS`. The summary goes in
+  as the first user/assistant exchange, after the system prompt and tools, so
+  updating it does not invalidate their cache. The summarizer reads compacted
+  turns, so retrieved text never reaches it.
+- A final guard drops the oldest turns if the budget is still exceeded.
+- Caching: Anthropic gets cache breakpoints after the tools, the system prompt
+  and the conversation so far; OpenAI caches automatically and gets the
+  session id as `prompt_cache_key`. Token estimates count tool results as
+  sent, wrapped as untrusted data.
 
 ### 3.7 Memory
 
