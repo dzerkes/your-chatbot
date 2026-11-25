@@ -10,12 +10,27 @@ All important changes to this project are recorded here, newest first.
 
 ## Unreleased
 
+### 2026-11-25
+
+| Plan id | Commit | Type | Change |
+|---|---|---|---|
+| C18 | Pending | Added | `rag` schema with documents and chunks: HNSW cosine index on embeddings, weighted generated full-text vector with GIN index, and per-chunk allowed groups with GIN index. |
+| C18 | Pending | Added | Structure-aware Markdown chunking (heading paths, whole code fences, in-section overlap), `Embedder` strategy (`local:` fastembed, `openai:`, `fake:`), and an idempotent `python -m chatbot.rag.ingest` CLI with `--prune` and `make ingest`. |
+| C18 | Pending | Added | Seven synthetic demo documents across `employees`, `engineering`, `finance`, `hr` and `leadership`, including restricted ones for access-control tests. |
+| C18 | Pending | Security | Documents must name at least one group (no implicit public access); the read-only role gets `SELECT` on `rag` only, the application role nothing, and ingestion writes as the owner. |
+| C18 | Pending | Decision | D4: local `BAAI/bge-small-en-v1.5` (384 dimensions); fastembed is an optional `local-embeddings` extra so the migrate image stays small. |
+| C18 | Pending | Changed | Integration-test databases now get the `vector` extension from the superuser, which the `rag` migration requires. |
+
 ### 2026-11-12
 
 | Plan id | Commit | Type | Change |
 |---|---|---|---|
-| C15 | Pending | Added | Streamlit workspace client with saved conversations, new-chat drafts, streaming replies, collapsed tool activity and URL-based session selection. |
-| C15 | Pending | Added | Independent frontend settings and HTTP/SSE client, friendly failures, account-change isolation, and AppTest coverage including a real API/Postgres reload-and-resume walkthrough. |
+| C17 | `2e44b67` | Added | GitHub Actions CI: ruff, mypy, unit tests, and integration tests against Compose Postgres; `llm` tests excluded. |
+| — | `458ade3` | Fixed | Provider adapters log the provider's error reason and request ID; users still see a generic message. |
+| C16 | `8c47c80` | Added | Backend, migrate and frontend images built with uv from the lockfile; Compose starts postgres, migrate, backend and frontend in order with healthchecks. |
+| C16 | `8c47c80` | Fixed | `.env.example` no longer puts inline comments on empty keys, which Compose read as values. |
+| C15 | `cd0ac6d` | Added | Streamlit workspace client with saved conversations, new-chat drafts, streaming replies, collapsed tool activity and URL-based session selection. |
+| C15 | `cd0ac6d` | Added | Independent frontend settings and HTTP/SSE client, friendly failures, account-change isolation, and AppTest coverage including a real API/Postgres reload-and-resume walkthrough. |
 | C14 | `d51f349` | Added | FastAPI workspace service with lifespan-owned chatbot resources, dev bearer authentication, owner-scoped session endpoints, health and POST chat SSE. |
 | C14 | `d51f349` | Security | Server-controlled user identity, forbidden extra request fields, 404 for inaccessible sessions, and safe HTTP error handling. |
 | C14 | `d51f349` | Added | Scripted API tests, real database/tool integration coverage and cancellation-shielded persistence when a streaming client disconnects. |

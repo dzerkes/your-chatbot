@@ -64,8 +64,11 @@ class Settings(BaseSettings):
     context_max_input_tokens: PositiveInt = 60000
     context_keep_last_turns: PositiveInt = 10
 
-    embedding_model: str | None = None
-    embedding_dim: PositiveInt | None = None
+    # The vector column size is fixed by the rag migration from embedding_dim, so
+    # changing the model to one with another dimension needs a schema change too.
+    embedding_model: str = "local:BAAI/bge-small-en-v1.5"
+    embedding_dim: PositiveInt = 384
+    embedding_cache_dir: str = ".cache/fastembed"
     reranker: Literal["none", "local", "api"] = "none"
     retrieval_candidates: PositiveInt = 40
     retrieval_page_size: PositiveInt = 5

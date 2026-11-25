@@ -59,8 +59,10 @@ def test_history_migration_and_permissions() -> None:
         "postgres",
         "sh",
         "-c",
-        'PGPASSWORD="$POSTGRES_PASSWORD" exec createdb '
-        '-h 127.0.0.1 -U postgres -T template0 -O "$OWNER_DB_USER" "$1"',
+        # The superuser adds pgvector, as db/init does for the main database.
+        'export PGPASSWORD="$POSTGRES_PASSWORD"; '
+        'createdb -h 127.0.0.1 -U postgres -T template0 -O "$OWNER_DB_USER" "$1" && '
+        'exec psql -Xq -h 127.0.0.1 -U postgres -d "$1" -c "CREATE EXTENSION vector"',
         "sh",
         database,
     )

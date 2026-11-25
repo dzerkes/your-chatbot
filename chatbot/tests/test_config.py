@@ -14,8 +14,8 @@ def test_example_env_is_supported(tmp_path: Path) -> None:
     settings = Settings()
     assert settings.postgres_user == "chatbot_owner"
     assert settings.llm_fallbacks == ()
-    assert settings.embedding_dim is None
-    assert settings.embedding_model is None
+    assert settings.embedding_dim == 384
+    assert settings.embedding_model == "local:BAAI/bge-small-en-v1.5"
     assert settings.memory_enabled is False
     assert settings.cost_cap_usd_per_user_per_day == Decimal("2.00")
 
@@ -37,7 +37,7 @@ def test_blank_optional_values_and_booleans(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setenv("MEMORY_ENABLED", "true")
     monkeypatch.setenv("TRACING_ENABLED", "false")
     settings = Settings()
-    assert settings.embedding_dim is None
+    assert settings.embedding_dim == 384  # blank falls back to the default
     assert settings.anthropic_api_key.get_secret_value() == ""
     assert settings.memory_enabled is True
     assert settings.tracing_enabled is False
@@ -61,6 +61,7 @@ def test_fallbacks_are_comma_separated(monkeypatch: pytest.MonkeyPatch) -> None:
         ("COST_CAP_USD_PER_USER_PER_DAY", "0"),
         ("BACKEND_URL", "not-a-url"),
         ("LLM_PRIMARY", "no-provider"),
+        ("EMBEDDING_MODEL", "no-provider"),
         ("LLM_FALLBACKS", "openai:valid,broken"),
     ],
 )

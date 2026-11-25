@@ -19,5 +19,10 @@ dependencies = [
     "opentelemetry-exporter-otlp-proto-http>=1.39,<2",
 ]
 
+[project.optional-dependencies]
+# ONNX embedding model for `local:` embedders; kept optional so images that only
+# migrate the schema do not install onnxruntime.
+local-embeddings = ["fastembed>=0.9,<1"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/chatbot"]
