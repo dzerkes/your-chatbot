@@ -40,5 +40,9 @@ CMD ["python", "db/bootstrap.py"]
 
 FROM runtime AS backend
 COPY --from=build-backend /opt/venv /opt/venv
+# Owned by app so the model-cache volume mounted here is writable.
+USER root
+RUN mkdir -p /home/app/.cache/fastembed && chown -R app:app /home/app/.cache
+USER app
 EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--timeout-graceful-shutdown", "20"]

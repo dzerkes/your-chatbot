@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "FastAPI transport for the provider-neutral chatbot core."
 requires-python = ">=3.12"
 dependencies = [
-    "chatbot",
+    "chatbot[local-embeddings]",  # search_docs embeds queries and reranks locally
     "fastapi>=0.115,<1",
     "uvicorn>=0.30,<1",
     "anyio>=4,<5",

@@ -306,6 +306,7 @@ async def test_cli_demo_query_and_session_resume(
     args = argparse.Namespace(
         user="c11-cli",
         display_name="CLI User",
+        groups=[],
         session=None,
         prompt="Which Northstar projects are active?",
     )

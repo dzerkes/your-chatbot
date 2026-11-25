@@ -74,7 +74,12 @@ services:
       CONTEXT_KEEP_LAST_TURNS: ${CONTEXT_KEEP_LAST_TURNS:-10}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-local:BAAI/bge-small-en-v1.5}
       EMBEDDING_DIM: ${EMBEDDING_DIM:-384}
-      RERANKER: ${RERANKER:-none}
+      EMBEDDING_CACHE_DIR: /home/app/.cache/fastembed
+      RERANKER: ${RERANKER:-local}
+      RERANKER_MODEL: ${RERANKER_MODEL:-Xenova/ms-marco-MiniLM-L-6-v2}
+      RERANKER_API_URL: ${RERANKER_API_URL:-}
+      RERANKER_API_KEY: ${RERANKER_API_KEY:-}
+      RERANK_CANDIDATES: ${RERANK_CANDIDATES:-20}
       RETRIEVAL_CANDIDATES: ${RETRIEVAL_CANDIDATES:-40}
       RETRIEVAL_PAGE_SIZE: ${RETRIEVAL_PAGE_SIZE:-5}
       MEMORY_ENABLED: ${MEMORY_ENABLED:-false}
@@ -85,7 +90,10 @@ services:
       RATE_LIMIT_REQUESTS_PER_MINUTE: ${RATE_LIMIT_REQUESTS_PER_MINUTE:-20}
       COST_CAP_USD_PER_USER_PER_DAY: ${COST_CAP_USD_PER_USER_PER_DAY:-2.00}
       AUTH_MODE: ${AUTH_MODE:-dev}
-      AUTH_DEV_TOKENS: ${AUTH_DEV_TOKENS:-dev-token-alice:alice,dev-token-bob:bob}
+      AUTH_DEV_TOKENS: ${AUTH_DEV_TOKENS:-dev-token-alice:alice:employees|engineering,dev-token-bob:bob:employees|finance|leadership}
+    volumes:
+      # Embedding and reranker models download once, not on every container start.
+      - model_cache:/home/app/.cache/fastembed
     ports:
       - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
     depends_on:
@@ -124,3 +132,4 @@ services:
 
 volumes:
   postgres_data:
+  model_cache:

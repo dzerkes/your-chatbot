@@ -80,6 +80,8 @@ provider in `.env`, then chat:
 ```bash
 uv run python -m chatbot.cli chat --user alice
 uv run python -m chatbot.cli chat --user alice --prompt "Which Northstar projects are active?"
+uv run python -m chatbot.cli chat --user alice --groups employees,engineering \
+    --prompt "How many vacation days do I get?"   # groups decide which documents it can search
 ```
 
 Use `--session SESSION_UUID` with the same user to resume a conversation.

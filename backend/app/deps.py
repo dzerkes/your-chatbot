@@ -9,10 +9,17 @@ from fastapi import Depends, HTTPException, Request
 
 
 @dataclass(frozen=True)
+class DevToken:
+    token: bytes
+    identity: str
+    groups: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class Runtime:
     settings: Settings
     chatbot: Agent
-    dev_tokens: tuple[tuple[bytes, str], ...]
+    dev_tokens: tuple[DevToken, ...]
 
 
 def get_runtime(request: Request) -> Runtime:
