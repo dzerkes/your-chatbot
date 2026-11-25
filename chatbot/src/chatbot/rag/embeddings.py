@@ -59,6 +59,11 @@ def build_embedder(settings: Settings) -> Embedder:
             raise ProviderError(f"Unknown embedding provider: {provider}")
 
 
+def vector_literal(vector: Sequence[float]) -> str:
+    """pgvector's text form, for a ``%s::vector`` parameter."""
+    return "[" + ",".join(format(x, ".8g") for x in vector) + "]"
+
+
 def _checked(vectors: Sequence[Sequence[float]], count: int, dim: int) -> list[list[float]]:
     result = [[float(x) for x in vector] for vector in vectors]
     if len(result) != count or any(len(vector) != dim for vector in result):

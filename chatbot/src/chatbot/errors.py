@@ -41,6 +41,12 @@ class IngestError(ChatbotError):
     code = "ingest_error"
 
 
+class RetrievalError(ChatbotError):
+    """A document search could not be completed."""
+
+    code = "retrieval_error"
+
+
 class StoreError(ChatbotError):
     """A history operation could not be completed."""
 

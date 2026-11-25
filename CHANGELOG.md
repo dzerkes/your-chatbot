@@ -14,12 +14,16 @@ All important changes to this project are recorded here, newest first.
 
 | Plan id | Commit | Type | Change |
 |---|---|---|---|
-| C18 | Pending | Added | `rag` schema with documents and chunks: HNSW cosine index on embeddings, weighted generated full-text vector with GIN index, and per-chunk allowed groups with GIN index. |
-| C18 | Pending | Added | Structure-aware Markdown chunking (heading paths, whole code fences, in-section overlap), `Embedder` strategy (`local:` fastembed, `openai:`, `fake:`), and an idempotent `python -m chatbot.rag.ingest` CLI with `--prune` and `make ingest`. |
-| C18 | Pending | Added | Seven synthetic demo documents across `employees`, `engineering`, `finance`, `hr` and `leadership`, including restricted ones for access-control tests. |
-| C18 | Pending | Security | Documents must name at least one group (no implicit public access); the read-only role gets `SELECT` on `rag` only, the application role nothing, and ingestion writes as the owner. |
-| C18 | Pending | Decision | D4: local `BAAI/bge-small-en-v1.5` (384 dimensions); fastembed is an optional `local-embeddings` extra so the migrate image stays small. |
-| C18 | Pending | Changed | Integration-test databases now get the `vector` extension from the superuser, which the `rag` migration requires. |
+| C19 | Pending | Added | Hybrid retriever: Postgres full-text leg (any stemmed term, behind a `LexicalSearch` interface) and pgvector cosine leg with iterative HNSW scan, run concurrently on the read-only role and merged with reciprocal rank fusion. |
+| C19 | Pending | Security | The caller's groups, plus optional source-prefix and tag filters, are applied inside both SQL queries; a caller with no groups gets nothing. Tested for every labeled query across five group sets. |
+| C19 | Pending | Added | 24-question labeled set with a test that checks hybrid recall@10 and exact-term ranking against each leg; CI caches the local embedding model. |
+| C19 | Pending | Changed | Plan: "Done when" amended because vector-only had the best overall MRR on the small demo corpus (vector 0.958, hybrid 0.915, lexical 0.795); hybrid kept as the design. |
+| C18 | `dd420e7` | Added | `rag` schema with documents and chunks: HNSW cosine index on embeddings, weighted generated full-text vector with GIN index, and per-chunk allowed groups with GIN index. |
+| C18 | `dd420e7` | Added | Structure-aware Markdown chunking (heading paths, whole code fences, in-section overlap), `Embedder` strategy (`local:` fastembed, `openai:`, `fake:`), and an idempotent `python -m chatbot.rag.ingest` CLI with `--prune` and `make ingest`. |
+| C18 | `dd420e7` | Added | Seven synthetic demo documents across `employees`, `engineering`, `finance`, `hr` and `leadership`, including restricted ones for access-control tests. |
+| C18 | `dd420e7` | Security | Documents must name at least one group (no implicit public access); the read-only role gets `SELECT` on `rag` only, the application role nothing, and ingestion writes as the owner. |
+| C18 | `dd420e7` | Decision | D4: local `BAAI/bge-small-en-v1.5` (384 dimensions); fastembed is an optional `local-embeddings` extra so the migrate image stays small. |
+| C18 | `dd420e7` | Changed | Integration-test databases now get the `vector` extension from the superuser, which the `rag` migration requires. |
 
 ### 2026-11-12
 
