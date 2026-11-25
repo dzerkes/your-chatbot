@@ -39,6 +39,7 @@ services:
       APP_DB_USER: ${APP_DB_USER:-chatbot_app}
       RO_DB_USER: ${RO_DB_USER:-chatbot_ro}
       SEED_DEMO_DATA: ${SEED_DEMO_DATA:-false}
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-384}  # sizes the rag.chunks vector column
     depends_on:
       postgres:
         condition: service_healthy
@@ -71,8 +72,8 @@ services:
       CONTEXT_STRATEGY: ${CONTEXT_STRATEGY:-sliding_window}
       CONTEXT_MAX_INPUT_TOKENS: ${CONTEXT_MAX_INPUT_TOKENS:-60000}
       CONTEXT_KEEP_LAST_TURNS: ${CONTEXT_KEEP_LAST_TURNS:-10}
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
-      EMBEDDING_DIM: ${EMBEDDING_DIM:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-local:BAAI/bge-small-en-v1.5}
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-384}
       RERANKER: ${RERANKER:-none}
       RETRIEVAL_CANDIDATES: ${RETRIEVAL_CANDIDATES:-40}
       RETRIEVAL_PAGE_SIZE: ${RETRIEVAL_PAGE_SIZE:-5}

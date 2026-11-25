@@ -68,6 +68,7 @@ uv sync                  # installs chatbot and the shared dev tools
 make up                  # starts Postgres and waits for its healthcheck
 make migrate             # creates or updates the history tables
 make seed                # loads synthetic clients and projects (repeatable)
+make ingest              # loads demo documents for search (repeatable)
 make psql                # connects as the migration owner (\q to exit)
 make test-integration    # starts Postgres, migrates, then runs integration tests
 make down                # stops containers; keeps the named database volume

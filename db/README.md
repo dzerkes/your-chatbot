@@ -21,7 +21,7 @@ SQLAlchemy's `URL.create`. Re-running the command when already at `head` changes
 nothing. To see the current revision:
 
 ```bash
-docker compose run --rm migrate uv run --locked alembic -c db/alembic.ini current
+docker compose run --rm migrate alembic -c db/alembic.ini current
 ```
 
 To run Alembic from the host, use `uv run alembic -c db/alembic.ini upgrade head`.
@@ -78,18 +78,47 @@ Migrations never load demo rows automatically. Statuses are `planned`, `active`,
 `on_hold`, `completed` and `cancelled`; dates are fixed so examples remain
 reproducible.
 
+## Documents for search (`rag`)
+
+`rag.documents` holds one row per source file: path, title, metadata, the
+groups allowed to read it, a content hash and the embedding model. `rag.chunks`
+holds the searchable pieces: heading path, text, an `EMBEDDING_DIM` vector, a
+generated weighted full-text vector, and a copy of the document's groups so both
+search legs can filter without a join. Indexes: HNSW (cosine) on embeddings and
+GIN on full text and on groups. A document must name at least one group.
+
+`RO_DB_USER` gets `SELECT` on both tables; the application role gets nothing.
+Ingestion is an operator job that writes as the migration owner:
+
+```bash
+make ingest               # migrate, then load db/seed/documents with EMBEDDING_MODEL
+uv run python -m chatbot.rag.ingest DIRECTORY [--prune]
+```
+
+Each `*.md` file needs front matter with `groups:` (see
+`db/seed/documents/README.md.txt`). Unchanged documents are skipped by content
+hash; a changed one has its chunks replaced in one transaction. `--prune`
+deletes stored documents whose file is gone. The default `local:` model
+(`BAAI/bge-small-en-v1.5`) downloads once to `EMBEDDING_CACHE_DIR` and runs on
+this machine. The vector size is fixed when the migration runs, so pick
+`EMBEDDING_DIM` first; the CLI refuses a model whose size does not match.
+
+The migration requires the `vector` extension, which only a superuser can
+create; `db/init/01_roles.sql` creates it in the Compose database.
+
 To remove the company-data schemas while keeping chat history:
 
 ```bash
-docker compose run --rm migrate uv run --locked alembic -c db/alembic.ini downgrade 20261112_01_history
+docker compose run --rm migrate alembic -c db/alembic.ini downgrade 20261112_01_history
 ```
 
-This deletes all raw clients/projects, including local additions and demo rows.
+This deletes all raw clients/projects, including local additions and demo rows,
+and all ingested documents.
 
 To remove the history tables in a disposable database, run:
 
 ```bash
-docker compose run --rm migrate uv run --locked alembic -c db/alembic.ini downgrade base
+docker compose run --rm migrate alembic -c db/alembic.ini downgrade base
 ```
 
 Downgrading to `base` deletes company data as well as all users, sessions, turns

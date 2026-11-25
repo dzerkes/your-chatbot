@@ -35,6 +35,12 @@ class StepLimitExceeded(ChatbotError):
     code = "step_limit_exceeded"
 
 
+class IngestError(ChatbotError):
+    """Documents could not be loaded into the search index."""
+
+    code = "ingest_error"
+
+
 class StoreError(ChatbotError):
     """A history operation could not be completed."""
 

@@ -36,7 +36,7 @@ affecting the commits before them.
 | D1 | Where migrations live | Top-level `db/`, not `backend/migrations/`. The `chatbot` package and its tests need the schema without the backend, and a `migrate` compose job runs them once. | Confirmed 2026-11-10 |
 | D2 | CI system | GitHub Actions (`.github/workflows/`). The brief said GitLab CI, but the repo is hosted on GitHub. | Confirmed 2026-11-10 |
 | D3 | Demo data | A small synthetic dataset (clients, projects, documents) with no real company data. | C10 |
-| D4 | Embedding model | A small local model, so no document text leaves the machine and ingestion is free. Alternative: an embeddings API. | C18 |
+| D4 | Embedding model | Local `BAAI/bge-small-en-v1.5` (384 dimensions) through fastembed, so no document text leaves the machine and ingestion is free. `openai:` is the alternative strategy. | Confirmed 2026-11-25 |
 | D5 | Reranker | A small local cross-encoder, with `none` as the baseline. Alternative: a rerank API. | C20 |
 | D6 | Langfuse | Cloud free tier with non-sensitive data. Self-hosting documented in C31. | C13 |
 
@@ -249,7 +249,7 @@ real tracing, before making any single layer good.
 
 ## Phase 2: Company data (M2)
 
-### [ ] C18 `feat(rag): add document schema and ingestion pipeline`
+### [x] C18 `feat(rag): add document schema and ingestion pipeline`
 
 - **Goal:** documents in the database, ready for both kinds of search.
 - **Files:** `db/migrations/` (schema `rag`), `chatbot/src/chatbot/rag/{chunking,embeddings,ingest}.py`,
@@ -261,6 +261,10 @@ real tracing, before making any single layer good.
   for groups.
 - **Done when:** `python -m chatbot.rag.ingest db/seed/documents` loads the
   demo documents, and running it twice changes nothing.
+- **Verification:** with the local model, `make ingest` loaded 7 documents as 36
+  chunks and a second run reported 7 unchanged. Paraphrased queries ("vacation
+  days" → annual leave) found the right section by vector distance. The
+  migration needs the `vector` extension, which a superuser creates (db/init).
 
 ### [ ] C19 `feat(rag): add hybrid retriever with access-control filter`
 
