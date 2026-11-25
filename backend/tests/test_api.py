@@ -60,18 +60,22 @@ class Harness:
     app: FastAPI
     store: MemoryStore
     closed: list[bool]
+    contexts: list[ToolContext]
 
 
 def api(provider: LLMProvider, *, tracing: Tracing | None = None) -> Harness:
-    settings = Settings(auth_dev_tokens=SecretStr("alice-token:alice,bob-token:bob"))
+    settings = Settings(
+        auth_dev_tokens=SecretStr("alice-token:alice:engineering|employees,bob-token:bob")
+    )
     store = MemoryStore()
     closed: list[bool] = []
+    contexts: list[ToolContext] = []
 
     class LookupInput(ToolInput):
         query: str
 
     async def lookup(inputs: LookupInput, context: ToolContext) -> ToolPage:
-        assert context.user.external_id == "alice"
+        contexts.append(context)  # asserted by the test; a raise here only becomes a tool error
         return ToolPage(items=[inputs.query], total=1)
 
     @asynccontextmanager
@@ -86,7 +90,7 @@ def api(provider: LLMProvider, *, tracing: Tracing | None = None) -> Harness:
                 await tracing.aclose()
             closed.append(True)
 
-    return Harness(create_app(settings, chatbot_factory=build), store, closed)
+    return Harness(create_app(settings, chatbot_factory=build), store, closed, contexts)
 
 
 def answer(text: str = "Hello") -> list[LLMEvent | Exception]:
@@ -180,6 +184,10 @@ def test_chat_sse_tools_resume_and_history() -> None:
         ]
         assert all(str(event.session_id) == session_id for event in events)
         assert len({event.turn_id for event in events}) == 1
+        # Identity and groups reach tools from configuration, never from the request.
+        assert [(c.user.external_id, c.user.groups) for c in harness.contexts] == [
+            ("alice", ["employees", "engineering"])
+        ]
         assert all(event.trace_id for event in events)
         assert (
             events[-1].model_dump()["usage"] == Usage(input_tokens=15, output_tokens=3).model_dump()
@@ -244,7 +252,8 @@ def test_invalid_chat_body_does_not_call_provider(body: dict[str, Any]) -> None:
 
 
 @pytest.mark.parametrize(
-    "configuration", ["", "secret", "secret:", ":alice", "secret:alice,secret:bob"]
+    "configuration",
+    ["", "secret", "secret:", ":alice", "secret:alice,secret:bob", "secret:alice:Bad Group"],
 )
 def test_bad_auth_configuration_is_rejected_without_echoing_tokens(configuration: str) -> None:
     with pytest.raises(ChatbotError) as caught:
@@ -320,3 +329,12 @@ async def test_disconnect_closes_stream_and_saves_interrupted_turn(spec_version:
         assert messages[-1].content[0].model_dump()["text"] == "Partial"
     spans = exporter.get_finished_spans()
     assert len(spans) == 3 and all(span.status.status_code == StatusCode.ERROR for span in spans)
+
+
+def test_dev_tokens_carry_optional_groups() -> None:
+    tokens = parse_dev_tokens(SecretStr("t1:alice:finance|employees| finance ,t2:bob,t3:carol:"))
+    assert [(t.token, t.identity, t.groups) for t in tokens] == [
+        (b"t1", "alice", ("employees", "finance")),
+        (b"t2", "bob", ()),
+        (b"t3", "carol", ()),
+    ]

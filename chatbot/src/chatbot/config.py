@@ -69,9 +69,14 @@ class Settings(BaseSettings):
     embedding_model: str = "local:BAAI/bge-small-en-v1.5"
     embedding_dim: PositiveInt = 384
     embedding_cache_dir: str = ".cache/fastembed"
-    reranker: Literal["none", "local", "api"] = "none"
+    reranker: Literal["none", "local", "api"] = "local"
+    # local: a fastembed cross-encoder; api: a Cohere-compatible /rerank endpoint.
+    reranker_model: str = "Xenova/ms-marco-MiniLM-L-6-v2"
+    reranker_api_url: HttpUrl | None = None
+    reranker_api_key: SecretStr = SecretStr("")
+    rerank_candidates: PositiveInt = 20  # fused hits rescored by the reranker
     retrieval_candidates: PositiveInt = 40
-    retrieval_page_size: PositiveInt = 5
+    retrieval_page_size: Annotated[int, Field(ge=1, le=10)] = 5
 
     memory_enabled: bool = False
     tracing_enabled: bool = False
@@ -86,7 +91,9 @@ class Settings(BaseSettings):
     backend_url: HttpUrl = HttpUrl("http://localhost:8000")
     frontend_port: Port = 8501
     auth_mode: Literal["dev"] = "dev"
-    auth_dev_tokens: SecretStr = SecretStr("dev-token-alice:alice,dev-token-bob:bob")
+    auth_dev_tokens: SecretStr = SecretStr(
+        "dev-token-alice:alice:employees|engineering,dev-token-bob:bob:employees|finance|leadership"
+    )
 
     @field_validator("llm_fallbacks", mode="before")
     @classmethod

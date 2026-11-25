@@ -58,9 +58,14 @@ def test_compose_configuration() -> None:
         "FRONTEND_PORT": "8501",
     }
     assert all(service["ports"][0]["host_ip"] == "127.0.0.1" for service in (backend, frontend))
-    assert all(
-        service.get("healthcheck") and not service.get("volumes") for service in (backend, frontend)
-    )
+    assert all(service.get("healthcheck") for service in (backend, frontend))
+    # No source bind mounts: images are self-contained. The backend only keeps its
+    # downloaded models in a named volume.
+    assert not frontend.get("volumes")
+    assert [(v["type"], v["source"], v["target"]) for v in backend["volumes"]] == [
+        ("volume", "model_cache", "/home/app/.cache/fastembed")
+    ]
+    assert backend["environment"]["EMBEDDING_CACHE_DIR"] == "/home/app/.cache/fastembed"
 
 
 @pytest.mark.unit

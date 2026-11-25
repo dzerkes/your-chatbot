@@ -19,7 +19,11 @@ from chatbot.types import TextDelta, ToolCallStarted, TurnFailed, User
 
 async def _prepare(chatbot: Agent, args: argparse.Namespace) -> tuple[User, Session]:
     user = await chatbot.store.upsert_user(
-        User(external_id=args.user, display_name=args.display_name or args.user)
+        User(
+            external_id=args.user,
+            display_name=args.display_name or args.user,
+            groups=args.groups,
+        )
     )
     if args.session is None:
         session = await chatbot.store.create_session(user.id)
@@ -80,6 +84,12 @@ def main(argv: list[str] | None = None) -> int:
     command = subcommands.add_parser("chat", help="Start or resume a terminal conversation")
     command.add_argument("--user", default="cli-user", help="Local development user identity")
     command.add_argument("--display-name")
+    command.add_argument(
+        "--groups",
+        type=lambda value: sorted({g.strip() for g in value.split(",") if g.strip()}),
+        default=[],
+        help="Comma-separated groups that decide which documents search_docs may return",
+    )
     command.add_argument("--session", type=UUID, help="Resume a session owned by this user")
     command.add_argument("--prompt", help="Ask one question and exit")
     args = parser.parse_args(argv)

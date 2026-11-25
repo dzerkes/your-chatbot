@@ -37,7 +37,7 @@ affecting the commits before them.
 | D2 | CI system | GitHub Actions (`.github/workflows/`). The brief said GitLab CI, but the repo is hosted on GitHub. | Confirmed 2026-11-10 |
 | D3 | Demo data | A small synthetic dataset (clients, projects, documents) with no real company data. | C10 |
 | D4 | Embedding model | Local `BAAI/bge-small-en-v1.5` (384 dimensions) through fastembed, so no document text leaves the machine and ingestion is free. `openai:` is the alternative strategy. | Confirmed 2026-11-25 |
-| D5 | Reranker | A small local cross-encoder, with `none` as the baseline. Alternative: a rerank API. | C20 |
+| D5 | Reranker | Local `Xenova/ms-marco-MiniLM-L-6-v2` cross-encoder on the top 20 fused hits; `none` and a Cohere-compatible `api` are the alternatives. | Confirmed 2026-11-25 |
 | D6 | Langfuse | Cloud free tier with non-sensitive data. Self-hosting documented in C31. | C13 |
 
 ---
@@ -289,7 +289,7 @@ real tracing, before making any single layer good.
   reranker reorders a top 10 that already holds every answer. Revisit with the
   C29 evals on a larger corpus.
 
-### [ ] C20 `feat(rag): add reranker strategies and the search_docs tool`
+### [x] C20 `feat(rag): add reranker strategies and the search_docs tool`
 
 - **Goal:** the second real tool.
 - **Files:** `chatbot/src/chatbot/rag/rerank/`, `chatbot/src/chatbot/tools/search_docs.py`.
@@ -299,9 +299,16 @@ real tracing, before making any single layer good.
   sources and ask for the next page.
 - **Done when:** the chatbot answers a question from the demo documents with
   citations, and a user without access gets no answer from restricted ones.
-- **Note:** dev users have no groups yet, so with C19's filter they see no
-  documents. Give dev tokens groups (for example alice: employees and
-  engineering; bob: employees and finance) when the tool is wired in.
+- **Also:** dev tokens carry groups (`token:identity:group|group`); the CLI has
+  `--groups`. The backend image installs the local models' extra and keeps the
+  downloaded models in a named volume.
+- **Verification:** on the labeled set, MRR@10 of the fused list was 0.915;
+  rerankers on the top 20 scored MiniLM-L-6 0.931 (~250 ms per query on a
+  laptop CPU), MiniLM-L-12 0.938 (~490 ms) and jina-tiny 0.907. Through the
+  running stack with `gpt-6-luna`: alice (employees, engineering) got her
+  annual-leave answer cited as [Employee handbook > Leave > Annual leave] and
+  "no document" for the architect day rate; bob (finance, leadership) got
+  "1,150 euros" cited as [Pricing guidelines 2026 > Day rates].
 
 ### [ ] C21 `feat(security): add prompt-injection defenses for retrieved content`
 

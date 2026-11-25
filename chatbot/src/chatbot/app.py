@@ -11,6 +11,7 @@ from chatbot.llm.registry import ProviderRegistry
 from chatbot.store.postgres import PostgresStore
 from chatbot.tools.query_projects import QueryProjects
 from chatbot.tools.registry import ToolRegistry
+from chatbot.tools.search_docs import SearchDocs
 from chatbot.tracing import Tracing
 
 
@@ -24,8 +25,10 @@ async def build_chatbot(settings: Settings) -> AsyncIterator[Agent]:
         stack.push_async_callback(provider.aclose)
         store = await stack.enter_async_context(PostgresStore(settings))
         projects = await stack.enter_async_context(QueryProjects(settings))
+        documents = await stack.enter_async_context(SearchDocs(settings))
         tools = ToolRegistry()
         tools.register(projects.tool())
+        tools.register(documents.tool())
         system = files("chatbot").joinpath("prompts/system.md").read_text(encoding="utf-8")
         yield Agent(
             store,
