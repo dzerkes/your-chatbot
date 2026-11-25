@@ -16,3 +16,8 @@ dependencies = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
+
+[tool.uv]
+# Rebuild this package when its sources change, not only its pyproject.toml.
+# Without this, Docker builds that share uv's cache installed stale code.
+cache-keys = [{ file = "pyproject.toml" }, { file = "app/**/*" }]

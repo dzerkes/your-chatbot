@@ -78,6 +78,13 @@ class Settings(BaseSettings):
     retrieval_candidates: PositiveInt = 40
     retrieval_page_size: Annotated[int, Field(ge=1, le=10)] = 5
 
+    # inprocess: tools run inside the chatbot process. mcp: the agent calls them on
+    # the MCP data server, which alone holds the read-only role and the models.
+    tools_transport: Literal["inprocess", "mcp"] = "inprocess"
+    mcp_server_url: HttpUrl = HttpUrl("http://localhost:8001/mcp")
+    mcp_server_port: Port = 8001
+    mcp_token_secret: SecretStr = SecretStr("")  # shared by backend and MCP server
+
     memory_enabled: bool = False
     tracing_enabled: bool = False
     langfuse_host: HttpUrl = HttpUrl("https://cloud.langfuse.com")

@@ -15,6 +15,8 @@ dependencies = [
     "pydantic-settings>=2.7,<3",
     "psycopg[binary,pool]>=3.2,<4",
     "openai>=3.49,<4",
+    "mcp>=2.3,<3",
+    "pyjwt>=2.10,<3",
     "opentelemetry-api>=1.39,<2",
     "opentelemetry-sdk>=1.39,<2",
     "opentelemetry-exporter-otlp-proto-http>=1.39,<2",
@@ -27,3 +29,8 @@ local-embeddings = ["fastembed>=0.9,<1"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/chatbot"]
+
+[tool.uv]
+# Rebuild this package when its sources change, not only its pyproject.toml.
+# Without this, Docker builds that share uv's cache installed stale code.
+cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*" }]

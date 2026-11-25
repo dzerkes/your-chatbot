@@ -9,6 +9,7 @@ COPY pyproject.toml uv.lock ./
 COPY chatbot/pyproject.toml chatbot/pyproject.toml
 COPY backend/pyproject.toml backend/pyproject.toml
 COPY frontend/pyproject.toml frontend/pyproject.toml
+COPY mcp_servers/pyproject.toml mcp_servers/pyproject.toml
 
 FROM build-base AS build-backend
 RUN --mount=type=cache,target=/root/.cache/uv \

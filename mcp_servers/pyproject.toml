@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling>=1.26,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "chatbot-mcp-servers"
+version = "0.1.0"
+description = "MCP servers exposing the chatbot's data tools to any MCP client."
+requires-python = ">=3.12"
+dependencies = [
+    "chatbot[local-embeddings]",
+    "mcp>=2.3,<3",
+    "starlette>=0.48,<2",
+    "uvicorn>=0.31,<1",
+]
+
+[tool.hatch.build]
+dev-mode-dirs = [".."]
+
+[tool.hatch.build.targets.wheel]
+only-include = ["__init__.py", "__main__.py", "data_server.py", "token.py"]
+sources = {"" = "mcp_servers"}
+
+[tool.uv]
+# Rebuild this package when its sources change, not only its pyproject.toml.
+# Without this, Docker builds that share uv's cache installed stale code.
+cache-keys = [{ file = "pyproject.toml" }, { file = "*.py" }]

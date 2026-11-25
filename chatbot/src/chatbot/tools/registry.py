@@ -1,10 +1,8 @@
-"""Registration, schema discovery and bounded dispatch for local tools."""
-
-from typing import Any
+"""Registration, schema discovery and bounded dispatch for local and MCP tools."""
 
 from chatbot.errors import ToolError
 from chatbot.llm.base import ToolDefinition
-from chatbot.tools.base import Tool, ToolContext
+from chatbot.tools.base import ToolContext, ToolLike
 from chatbot.tools.pagination import MAX_PAGE_SIZE, MAX_RESULT_BYTES
 from chatbot.types import ToolResult, ToolUse
 
@@ -17,18 +15,21 @@ class ToolRegistry:
             raise ValueError("Invalid tool result limits")
         self.max_items = max_items
         self.max_bytes = max_bytes
-        self._tools: dict[str, Tool[Any]] = {}
+        self._tools: dict[str, ToolLike] = {}
 
-    def register(self, tool: Tool[Any]) -> None:
+    def register(self, tool: ToolLike) -> None:
         if tool.name in self._tools:
             raise ToolError(f"Tool is already registered: {tool.name}")
         self._tools[tool.name] = tool
 
-    def get(self, name: str) -> Tool[Any]:
+    def get(self, name: str) -> ToolLike:
         try:
             return self._tools[name]
         except KeyError as exc:
             raise ToolError(f"Unknown tool: {name}") from exc
+
+    def tools(self) -> list[ToolLike]:
+        return list(self._tools.values())
 
     def definitions(self) -> list[ToolDefinition]:
         return [tool.definition() for tool in self._tools.values()]

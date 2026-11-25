@@ -59,13 +59,21 @@ def test_compose_configuration() -> None:
     }
     assert all(service["ports"][0]["host_ip"] == "127.0.0.1" for service in (backend, frontend))
     assert all(service.get("healthcheck") for service in (backend, frontend))
-    # No source bind mounts: images are self-contained. The backend only keeps its
-    # downloaded models in a named volume.
-    assert not frontend.get("volumes")
-    assert [(v["type"], v["source"], v["target"]) for v in backend["volumes"]] == [
+    # No source bind mounts: images are self-contained. Only the MCP server keeps
+    # downloaded models, in a named volume.
+    mcp = config["services"]["mcp"]
+    assert not frontend.get("volumes") and not backend.get("volumes")
+    assert [(v["type"], v["source"], v["target"]) for v in mcp["volumes"]] == [
         ("volume", "model_cache", "/home/app/.cache/fastembed")
     ]
-    assert backend["environment"]["EMBEDDING_CACHE_DIR"] == "/home/app/.cache/fastembed"
+    # Least privilege: tools (and the read-only role) live on the MCP server only.
+    assert backend["environment"]["TOOLS_TRANSPORT"] == "mcp"
+    assert backend["environment"]["MCP_SERVER_URL"] == "http://mcp:8001/mcp"
+    assert backend["depends_on"]["mcp"]["condition"] == "service_healthy"
+    assert "RO_DB_PASSWORD" not in backend["environment"]
+    assert {"APP_DB_PASSWORD", "POSTGRES_PASSWORD"}.isdisjoint(mcp["environment"])
+    assert mcp["environment"]["RO_DB_PASSWORD"] and mcp["healthcheck"]
+    assert mcp["ports"][0]["host_ip"] == "127.0.0.1"
 
 
 @pytest.mark.unit

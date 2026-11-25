@@ -135,6 +135,18 @@ From milestone M1 onward (commit C16 in the plan):
 docker compose up        # UI on http://localhost:8501, API on http://localhost:8000
 ```
 
+Compose runs the data tools on an MCP server (`mcp` service), which any MCP
+client can use on `http://localhost:8001/mcp`. Each request needs a bearer
+token signed with `MCP_TOKEN_SECRET`; mint a development one with:
+
+```bash
+uv run python -m mcp_servers.token --user alice --groups employees,engineering
+```
+
+and send it as `Authorization: Bearer <token>` (for example in the MCP
+Inspector's connection headers). The groups decide which documents
+`search_docs` returns.
+
 ## Development
 
 ```bash
