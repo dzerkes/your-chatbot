@@ -9,9 +9,11 @@ from chatbot.config import Settings
 from chatbot.context import build_context_builder
 from chatbot.context.summary import Summarizer
 from chatbot.llm.registry import ProviderRegistry
+from chatbot.store.memory_store import PostgresUserMemoryStore
 from chatbot.store.postgres import PostgresStore
 from chatbot.tools.local import open_local_tools
 from chatbot.tools.mcp_client import McpToolset
+from chatbot.tools.memory import MemoryTool
 from chatbot.tracing import Tracing
 
 
@@ -29,6 +31,13 @@ async def build_chatbot(settings: Settings) -> AsyncIterator[Agent]:
         else:
             tools = await open_local_tools(settings, stack)
         system = files("chatbot").joinpath("prompts/system.md").read_text(encoding="utf-8")
+        memories = None
+        if settings.memory_enabled:
+            # In-process on the application role, also when data tools use MCP: the
+            # MCP server stays read-only.
+            memories = PostgresUserMemoryStore(store.pool)
+            tools.register(MemoryTool(memories, store, max_facts=settings.memory_max_facts).tool())
+            system += files("chatbot").joinpath("prompts/memory.md").read_text(encoding="utf-8")
         summarizer = None
         if "summary" in settings.context_strategy:
             summary_provider = ProviderRegistry(settings).get(settings.llm_summary_model)
@@ -48,4 +57,5 @@ async def build_chatbot(settings: Settings) -> AsyncIterator[Agent]:
             context_builder=context_builder,
             tracing=tracing,
             summarizer=summarizer,
+            memories=memories,
         )

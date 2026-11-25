@@ -386,7 +386,7 @@ real tracing, before making any single layer good.
   broke the cache each time. Token estimates now count tool results wrapped as
   sent.
 
-### [ ] C24 `feat(memory): add user memory tool behind a feature flag`
+### [x] C24 `feat(memory): add user memory tool behind a feature flag`
 
 - **Goal:** cross-session facts about the user.
 - **Files:** migration for `user_memory`, `chatbot/src/chatbot/tools/memory.py`,
@@ -397,6 +397,14 @@ real tracing, before making any single layer good.
   content from retrieved documents. Off unless `MEMORY_ENABLED=true`.
 - **Done when:** a fact stated in one session is used in a new one, and the
   user can see and delete it.
+- **Verification:** through the backend app with `gpt-6-luna` and memory on:
+  session 1 saved "works on the Research Portal" with the user's quote; a new
+  session answered "You're working on the Research Portal"; `GET /memories`
+  listed it, `DELETE` removed it, and a later session no longer knew. Unit
+  tests show a quote that appears only in a tool result (an injected
+  "remember that...") is rejected.
+- **Also:** the memory tool stays in-process even with `TOOLS_TRANSPORT=mcp`,
+  because it writes; `ToolContext` gained `user_message` for the quote check.
 
 ---
 

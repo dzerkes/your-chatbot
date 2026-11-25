@@ -199,6 +199,17 @@ tool. Off by default (`MEMORY_ENABLED=false`) and built late, because many
 enterprise bots do not need it at first. Facts are visible to and deletable by
 the user.
 
+How it works (C24): one `memory` tool with `remember`, `recall` and `forget`,
+scoped to the user in `ToolContext`. `remember` must quote the user's own
+words, and the tool checks the quote against what the user typed in the
+session (the current message, passed by the agent, and stored user messages),
+so text from documents or tool results can never become a memory. Up to
+`MEMORY_CONTEXT_FACTS` recent facts are added to the system prompt each turn as
+data. The table has no UPDATE grant: facts are added and forgotten, not edited.
+The tool runs in the chatbot process on the application role, also when the
+data tools run over MCP, so the MCP server stays read-only. Users see and
+delete facts in the UI panel or through `GET/DELETE /memories`.
+
 ### 3.8 Tracing and audit
 
 OpenTelemetry spans, exported to Langfuse. Hierarchy:

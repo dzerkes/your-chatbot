@@ -91,6 +91,8 @@ class Settings(BaseSettings):
     mcp_token_secret: SecretStr = SecretStr("")  # shared by backend and MCP server
 
     memory_enabled: bool = False
+    memory_max_facts: PositiveInt = 100  # per user
+    memory_context_facts: NonNegativeInt = 20  # newest facts shown to the model each turn
     tracing_enabled: bool = False
     langfuse_host: HttpUrl = HttpUrl("https://cloud.langfuse.com")
     langfuse_public_key: SecretStr = SecretStr("")

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+import anyio
 import pytest
 from app.auth import parse_dev_tokens
 from app.main import create_app
@@ -26,6 +27,7 @@ from chatbot.llm.base import (
 )
 from chatbot.llm.fake import ScriptedProvider
 from chatbot.store.memory import MemoryStore
+from chatbot.store.memory_store import InMemoryUserMemoryStore
 from chatbot.tools.base import Tool, ToolContext, ToolInput
 from chatbot.tools.pagination import ToolPage
 from chatbot.tools.registry import ToolRegistry
@@ -63,7 +65,12 @@ class Harness:
     contexts: list[ToolContext]
 
 
-def api(provider: LLMProvider, *, tracing: Tracing | None = None) -> Harness:
+def api(
+    provider: LLMProvider,
+    *,
+    tracing: Tracing | None = None,
+    memories: InMemoryUserMemoryStore | None = None,
+) -> Harness:
     settings = Settings(
         auth_dev_tokens=SecretStr("alice-token:alice:engineering|employees,bob-token:bob")
     )
@@ -83,7 +90,15 @@ def api(provider: LLMProvider, *, tracing: Tracing | None = None) -> Harness:
         tools = ToolRegistry()
         tools.register(Tool("lookup", "Lookup", LookupInput, lookup))
         try:
-            yield Agent(store, provider, tools, configured, system="Test", tracing=tracing)
+            yield Agent(
+                store,
+                provider,
+                tools,
+                configured,
+                system="Test",
+                tracing=tracing,
+                memories=memories,
+            )
         finally:
             await provider.aclose()
             if tracing is not None:
@@ -338,3 +353,43 @@ def test_dev_tokens_carry_optional_groups() -> None:
         (b"t2", "bob", ()),
         (b"t3", "carol", ()),
     ]
+
+
+def test_memories_are_listed_and_deleted_per_user() -> None:
+    memories = InMemoryUserMemoryStore()
+    harness = api(ScriptedProvider([]), memories=memories)
+    with TestClient(harness.app) as client:
+        assert client.get("/memories", headers=ALICE).json() == []
+        # The API created the user on first request; upsert returns the same canonical id.
+        alice = anyio.run(
+            harness.store.upsert_user, User(external_id="alice", display_name="alice")
+        )
+
+        async def seed() -> None:
+            await memories.add(alice.id, "Prefers bullet points", "I like bullet points", None)
+            await memories.add(alice.id, "Works on the Research Portal", "I work on it", None)
+
+        anyio.run(seed)
+        listed = client.get("/memories", headers=ALICE).json()
+        assert [m["fact"] for m in listed] == [
+            "Works on the Research Portal",
+            "Prefers bullet points",
+        ]
+        assert set(listed[0]) == {"id", "fact", "evidence", "source_session_id", "created_at"}
+        client.get("/sessions", headers=BOB)
+        assert client.get("/memories", headers=BOB).json() == []
+        assert client.delete(f"/memories/{listed[0]['id']}", headers=BOB).status_code == 404
+        assert client.delete(f"/memories/{listed[0]['id']}", headers=ALICE).status_code == 204
+        assert [m["fact"] for m in client.get("/memories", headers=ALICE).json()] == [
+            "Prefers bullet points"
+        ]
+        assert client.delete(f"/memories/{listed[0]['id']}", headers=ALICE).status_code == 404
+        assert client.get("/memories").status_code == 401
+
+
+def test_memory_endpoints_are_404_when_memory_is_off() -> None:
+    harness = api(ScriptedProvider([]))
+    with TestClient(harness.app) as client:
+        response = client.get("/memories", headers=ALICE)
+        assert response.status_code == 404 and response.json()["detail"] == "Memory is disabled"
+        assert client.delete("/memories/1", headers=ALICE).status_code == 404

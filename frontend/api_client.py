@@ -33,6 +33,12 @@ class SessionDetail(SessionSummary):
     messages: list[ChatMessage]
 
 
+class RememberedFact(BaseModel):
+    id: int
+    fact: str
+    created_at: datetime
+
+
 class StreamEvent(BaseModel):
     type: Literal[
         "text_delta", "tool_call_started", "tool_call_finished", "turn_completed", "turn_failed"
@@ -166,6 +172,30 @@ class ApiClient:
             return detail
         except ValidationError as exc:
             raise ApiError("The chat service sent an invalid conversation.") from exc
+
+    def list_memories(self) -> list[RememberedFact] | None:
+        """The user's remembered facts, or None when memory is disabled on the server."""
+        try:
+            return TypeAdapter(list[RememberedFact]).validate_python(
+                self._request("GET", "memories")
+            )
+        except ApiError as exc:
+            if exc.status_code == 404:
+                return None
+            raise
+        except ValidationError as exc:
+            raise ApiError("The chat service sent an invalid memory list.") from exc
+
+    def delete_memory(self, memory_id: int) -> None:
+        try:
+            response = self._client.request(
+                "DELETE", f"memories/{memory_id}", headers=self._headers, timeout=10
+            )
+        except httpx.RequestError as exc:
+            raise ApiError("Could not reach the chat service. Try again shortly.") from exc
+        if response.status_code == 404:
+            return  # already gone
+        self._check(response)
 
     def stream_chat(self, session_id: UUID, message: str) -> Iterator[StreamEvent]:
         terminal = False

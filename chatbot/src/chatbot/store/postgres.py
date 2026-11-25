@@ -40,6 +40,11 @@ class PostgresStore:
         await self._pool.open(wait=True)
         return self
 
+    @property
+    def pool(self) -> AsyncConnectionPool:
+        """The application-role pool, shared with stores for other app-owned tables."""
+        return self._pool
+
     async def __aexit__(self, _exc_type: object, _exc: object, _tb: object) -> None:
         await self._pool.close()
 

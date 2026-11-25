@@ -36,7 +36,9 @@ from chatbot.llm.base import (
 from chatbot.logging import log_context
 from chatbot.safety import wrap_tool_results
 from chatbot.store.base import HistoryStore, Session, Turn
+from chatbot.store.memory_store import UserMemoryStore
 from chatbot.tools.base import ToolContext
+from chatbot.tools.memory import memory_context
 from chatbot.tools.registry import ToolRegistry
 from chatbot.tracing import Tracing
 from chatbot.types import (
@@ -86,6 +88,7 @@ class Agent:
         context_builder: ContextBuilder | None = None,
         tracing: Tracing | None = None,
         summarizer: Summarizer | None = None,
+        memories: UserMemoryStore | None = None,
     ) -> None:
         self.store = store
         self.tracing = tracing if tracing is not None else Tracing()
@@ -97,6 +100,7 @@ class Agent:
             context_builder if context_builder is not None else build_context_builder(settings)
         )
         self.summarizer = summarizer
+        self.memories = memories
         if summarizer is not None:
             summarizer.provider = self.tracing.wrap_provider(summarizer.provider)
         self._locks: WeakValueDictionary[UUID, asyncio.Lock] = WeakValueDictionary()
@@ -128,6 +132,19 @@ class Agent:
                             )
                         yield event
 
+    async def _memory_context(self, user: User) -> str:
+        """Remembered facts for this turn's system prompt; empty without memory."""
+        if self.memories is None or self.settings.memory_context_facts == 0:
+            return ""
+        try:
+            facts, total = await self.memories.list(
+                user.id, limit=self.settings.memory_context_facts
+            )
+        except Exception:
+            logger.warning("Could not load user memory; continuing without it", exc_info=True)
+            return ""
+        return memory_context(facts, total)
+
     async def _update_summary(
         self,
         turn: Turn,
@@ -135,6 +152,7 @@ class Agent:
         history: list[Message],
         current: list[Message],
         summary: SessionSummary | None,
+        system: str,
     ) -> tuple[SessionSummary | None, Usage]:
         """Fold old turns into the session summary when due; never fail the turn for it."""
         assert self.summarizer is not None
@@ -143,7 +161,7 @@ class Agent:
                 built = self.context_builder.build(
                     history,
                     current,
-                    system=self.system,
+                    system=system,
                     tools=self.tools.definitions(),
                     summary=summary,
                 )
@@ -217,14 +235,19 @@ class Agent:
             messages.append(message)
 
         append("user", [Text(text=text)])
+        system = self.system + await self._memory_context(user)
         summary = _stored_summary(session)
         if self.summarizer is not None:
             summary, summary_usage = await self._update_summary(
-                turn, user, history, messages, summary
+                turn, user, history, messages, summary, system
             )
             usage = _add_usage(usage, summary_usage)
         context = ToolContext(
-            user=user, session_id=turn.session_id, turn_id=turn.id, trace_id=turn.trace_id
+            user=user,
+            session_id=turn.session_id,
+            turn_id=turn.id,
+            trace_id=turn.trace_id,
+            user_message=text,
         )
         used_calls = {
             block.id
@@ -240,7 +263,7 @@ class Agent:
                 stop: LLMStop | None = None
                 definitions = self.tools.definitions()
                 built = self.context_builder.build(
-                    history, messages, system=self.system, tools=definitions, summary=summary
+                    history, messages, system=system, tools=definitions, summary=summary
                 )
                 request = LLMRequest(
                     system=built.system,

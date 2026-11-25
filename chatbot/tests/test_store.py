@@ -4,15 +4,22 @@ import subprocess
 from collections.abc import Iterator
 from decimal import Decimal
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
+import psycopg
 import pytest
 from chatbot.config import Settings
 from chatbot.errors import ConflictError, NotFoundError
 from chatbot.store.base import HistoryStore, Turn
 from chatbot.store.memory import MemoryStore
+from chatbot.store.memory_store import (
+    InMemoryUserMemoryStore,
+    PostgresUserMemoryStore,
+    UserMemoryStore,
+)
 from chatbot.store.postgres import PostgresStore
 from chatbot.types import Message, Text, ToolResult, ToolUse, Usage, User
+from psycopg.conninfo import make_conninfo
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -256,3 +263,50 @@ async def test_postgres_store_contract(temporary_database: tuple[str, int]) -> N
     async with PostgresStore(settings) as store:
         _static_contract: HistoryStore = store
         await exercise_history(_static_contract)
+
+
+async def exercise_memories(store: UserMemoryStore, alice: UUID, bob: UUID) -> None:
+    first, created = await store.add(alice, "Prefers bullet points", "I like bullet points", None)
+    again, created_again = await store.add(alice, "PREFERS bullet points", "x", None)
+    assert created and not created_again and again.id == first.id
+    await store.add(alice, "Works on 100%_real projects", "q", None)
+    await store.add(bob, "Bob's fact", "q", None)
+    page, total = await store.list(alice)
+    assert total == 2 and page[0].fact == "Works on 100%_real projects"
+    # LIKE wildcards in the query are literal text.
+    assert [m.fact for m in (await store.list(alice, query="0%_r"))[0]] == [
+        "Works on 100%_real projects"
+    ]
+    assert (await store.list(alice, query="%"))[1] == 1
+    assert not await store.delete(bob, first.id)
+    assert await store.delete(alice, first.id) and not await store.delete(alice, first.id)
+
+
+def test_memory_store_contract_in_memory() -> None:
+    import anyio
+
+    anyio.run(exercise_memories, InMemoryUserMemoryStore(), uuid4(), uuid4())
+
+
+@pytest.mark.integration
+async def test_postgres_memory_store_and_grants(temporary_database: tuple[str, int]) -> None:
+    database, port = temporary_database
+    settings = Settings(postgres_db=database, postgres_port=port)
+    async with PostgresStore(settings) as store:
+        alice = await store.upsert_user(User(external_id="mem-alice", display_name="A"))
+        bob = await store.upsert_user(User(external_id="mem-bob", display_name="B"))
+        await exercise_memories(PostgresUserMemoryStore(store.pool), alice.id, bob.id)
+        async with store.pool.connection() as conn:
+            # Facts are added and forgotten, never rewritten in place.
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                await conn.execute("UPDATE user_memory SET fact = 'changed'")
+    reader = make_conninfo(
+        host=settings.postgres_host,
+        port=port,
+        dbname=database,
+        user=settings.ro_db_user,
+        password=settings.ro_db_password.get_secret_value(),
+    )
+    async with await psycopg.AsyncConnection.connect(reader) as conn:
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            await conn.execute("SELECT count(*) FROM user_memory")

@@ -24,6 +24,9 @@ class ToolContext:
     session_id: UUID
     turn_id: UUID
     trace_id: str | None = None
+    # The current turn's message as the user typed it (set by the agent, never the
+    # model); lets tools check that something came from the user. Not sent over MCP.
+    user_message: str | None = None
 
 
 class ToolLike(Protocol):
