@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import subprocess
 from collections.abc import Iterator
+from decimal import Decimal
 from pathlib import Path
 from uuid import uuid4
 
@@ -261,6 +262,7 @@ async def test_cli_demo_query_and_session_resume(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     enable_tracing: bool,
+    tmp_path: Path,
 ) -> None:
     exporters: list[InMemorySpanExporter] = []
 
@@ -270,8 +272,13 @@ async def test_cli_demo_query_and_session_resume(
         return result
 
     monkeypatch.setattr(tracing_module, "OTLPSpanExporter", exporter)
+    prices = tmp_path / "prices.toml"
+    prices.write_text('["fake:scripted"]\ninput = "2"\ncached_input = "0.1"\noutput = "10"\n')
     settings = project_database.model_copy(
         update={
+            "llm_primary": "fake:scripted",
+            "llm_fallbacks": (),
+            "llm_prices_file": str(prices),
             "tracing_enabled": enable_tracing,
             "langfuse_public_key": SecretStr("pk-test"),
             "langfuse_secret_key": SecretStr("sk-test"),
@@ -302,7 +309,7 @@ async def test_cli_demo_query_and_session_resume(
             ],
         ]
     )
-    monkeypatch.setattr(ProviderRegistry, "get_primary", lambda self: provider)
+    monkeypatch.setattr(ProviderRegistry, "get", lambda self, name: provider)
     args = argparse.Namespace(
         user="c11-cli",
         display_name="CLI User",
@@ -325,9 +332,16 @@ async def test_cli_demo_query_and_session_resume(
         assert "Research Portal" in str(result.content["items"])
         turn = (await store.list_turns(session.id, user.id))[0]
         assert turn.status == "completed" and turn.input_tokens == 30 and turn.output_tokens == 10
+        assert turn.cost_usd == Decimal("0.000160")
         if enable_tracing:
             spans = exporters[0].get_finished_spans()
             assert len(spans) == 5
+            assert [(s.attributes or {})["chatbot.cost_usd"] for s in spans if s.name == "llm"] == [
+                0.000040,
+                0.000120,
+            ]
+            turn_span = next(s for s in spans if s.name == "turn")
+            assert (turn_span.attributes or {})["chatbot.cost_usd"] == float(turn.cost_usd)
             for span in spans:
                 span_context = span.get_span_context()
                 assert span_context is not None
@@ -365,7 +379,7 @@ async def test_backend_project_chat_and_owner_scoping(
             ],
         ]
     )
-    monkeypatch.setattr(ProviderRegistry, "get_primary", lambda self: provider)
+    monkeypatch.setattr(ProviderRegistry, "get", lambda self, name: provider)
     monkeypatch.setattr("app.main.configure_logging", lambda settings: None)
     settings = project_database.model_copy(
         update={

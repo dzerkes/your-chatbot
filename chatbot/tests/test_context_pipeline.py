@@ -2,6 +2,7 @@
 
 import itertools
 from collections.abc import Sequence
+from decimal import Decimal
 from uuid import UUID, uuid4
 
 import pytest
@@ -13,7 +14,7 @@ from chatbot.context.compact_tools import compact_note, compact_turn
 from chatbot.context.pipeline import SUMMARY_INTRO, PipelineContextBuilder
 from chatbot.context.summary import Summarizer
 from chatbot.context.tokens import ApproximateTokenCounter
-from chatbot.errors import ContextOverflow, ProviderError
+from chatbot.errors import ContextOverflow, ProviderError, StoreError
 from chatbot.llm.base import (
     LLMEvent,
     LLMRequest,
@@ -209,6 +210,46 @@ async def test_summarizer_reads_compacted_turns_and_the_previous_summary() -> No
     empty = Summarizer(ScriptedProvider([summary_reply("  ")]), keep_last_turns=1, trigger_turns=1)
     with pytest.raises(ProviderError, match="no text"):
         await empty.summarize(None, turns)
+
+
+@pytest.mark.parametrize("outcome", ["saved", "write_failed", "empty_reply"])
+async def test_turn_counts_summary_usage_even_if_the_summary_is_discarded(
+    outcome: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = MemoryStore()
+    user = await store.upsert_user(User(external_id="alice", display_name="Alice"))
+    session = await store.create_session(user.id)
+
+    async def write_failed(*args: object) -> None:
+        raise StoreError("Could not save the summary")
+
+    if outcome == "write_failed":
+        monkeypatch.setattr(store, "update_summary", write_failed)
+
+    # Each call alone would round to zero at the turn column's six decimal places.
+    metered = LLMUsage(usage=Usage(input_tokens=4), cost_usd=Decimal("0.0000004"))
+    chat: list[LLMEvent] = [LLMTextDelta(text="Hi"), metered, LLMStop(reason="end_turn")]
+    summary_text = "" if outcome == "empty_reply" else "Earlier turns"
+    summaries = ScriptedProvider(
+        [[LLMTextDelta(text=summary_text), metered, LLMStop(reason="end_turn")]]
+    )
+    agent = Agent(
+        store,
+        ScriptedProvider([chat] * 3),
+        ToolRegistry(),
+        Settings(),
+        system="Rules",
+        summarizer=Summarizer(summaries, keep_last_turns=1, trigger_turns=1),
+    )
+    for _ in range(3):
+        events = [event async for event in agent.respond(session.id, "Hi", user)]
+    assert len(summaries.requests) == 1
+    saved = (await store.list_turns(session.id, user.id))[-1]
+    assert isinstance(events[-1], TurnCompleted)
+    assert saved.cost_usd == events[-1].cost_usd == Decimal("0.000001")
+    assert saved.input_tokens == events[-1].usage.input_tokens == 8
+    updated = await store.get_session(session.id, user.id)
+    assert updated and updated.summary == ("Earlier turns" if outcome == "saved" else None)
 
 
 # --- a long session through the agent (C23 "done when") ---------------------

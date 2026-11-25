@@ -23,7 +23,8 @@ async def build_chatbot(settings: Settings) -> AsyncIterator[Agent]:
     async with AsyncExitStack() as stack:
         tracing = Tracing.from_settings(settings)
         stack.push_async_callback(tracing.aclose)
-        provider = ProviderRegistry(settings).get_primary()
+        registry = ProviderRegistry(settings)
+        provider = registry.primary_gateway()
         stack.push_async_callback(provider.aclose)
         store = await stack.enter_async_context(PostgresStore(settings))
         if settings.tools_transport == "mcp":
@@ -40,7 +41,7 @@ async def build_chatbot(settings: Settings) -> AsyncIterator[Agent]:
             system += files("chatbot").joinpath("prompts/memory.md").read_text(encoding="utf-8")
         summarizer = None
         if "summary" in settings.context_strategy:
-            summary_provider = ProviderRegistry(settings).get(settings.llm_summary_model)
+            summary_provider = registry.gateway(settings.llm_summary_model)
             stack.push_async_callback(summary_provider.aclose)
             summarizer = Summarizer(
                 summary_provider,

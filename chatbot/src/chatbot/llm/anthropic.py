@@ -5,6 +5,7 @@ import logging
 from collections.abc import AsyncIterator, Sequence
 from typing import Any, cast
 
+import httpx2
 from anthropic import (
     APIConnectionError,
     APIError,
@@ -213,7 +214,7 @@ class _StreamTranslator:
             return []
 
         if kind == "message_stop":
-            if self._usage is None:
+            if self._usage is None or not {"input_tokens", "output_tokens"} <= self._usage.keys():
                 raise ProviderError("Response did not include usage")
             if self._tool_blocks:
                 raise ProviderError("Response ended with an incomplete tool call")
@@ -221,8 +222,8 @@ class _StreamTranslator:
             cache_read = self._usage.get("cache_read_input_tokens", 0)
             cache_creation = self._usage.get("cache_creation_input_tokens", 0)
             usage = Usage(
-                input_tokens=self._usage.get("input_tokens", 0) + cache_read + cache_creation,
-                output_tokens=self._usage.get("output_tokens", 0),
+                input_tokens=self._usage["input_tokens"] + cache_read + cache_creation,
+                output_tokens=self._usage["output_tokens"],
                 cache_read_input_tokens=cache_read,
                 cache_creation_input_tokens=cache_creation,
             )
@@ -287,14 +288,19 @@ class AnthropicProvider:
         except ProviderError:
             raise
         # Users get a generic message; operators need the provider's reason in the logs.
-        except APIConnectionError as exc:
+        except (APIConnectionError, httpx2.TransportError) as exc:
             logger.warning("Anthropic connection failed: %s", exc)
             raise ProviderError("Anthropic connection failed", retryable=True) from exc
         except APIStatusError as exc:
             logger.warning(
                 "Anthropic request failed (request_id=%s): %s", exc.request_id, exc.message
             )
-            retryable = exc.status_code == 429 or exc.status_code >= 500
+            # An error event inside a successful HTTP stream still has status 200.
+            retryable = (
+                exc.status_code in {408, 409, 429}
+                or exc.status_code >= 500
+                or exc.type in {"api_error", "overloaded_error", "rate_limit_error"}
+            ) and exc.error_code != "enforced_spend_limit_reached"
             raise ProviderError("Anthropic request failed", retryable=retryable) from exc
         except APIError as exc:
             logger.warning("Anthropic request failed: %s", exc.message)

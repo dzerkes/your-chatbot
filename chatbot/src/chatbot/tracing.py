@@ -8,6 +8,7 @@ import json
 from collections.abc import AsyncIterator, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
+from decimal import Decimal
 from time import monotonic
 from typing import TYPE_CHECKING
 
@@ -21,7 +22,16 @@ from opentelemetry.trace import INVALID_SPAN, Span, Status, StatusCode, format_t
 
 from chatbot.config import Settings
 from chatbot.errors import ChatbotError, ToolError
-from chatbot.llm.base import LLMEvent, LLMProvider, LLMRequest, LLMStop, LLMTextDelta, LLMUsage
+from chatbot.llm.base import (
+    LLMEvent,
+    LLMProvider,
+    LLMRequest,
+    LLMStop,
+    LLMTextDelta,
+    LLMToolCall,
+    LLMUsage,
+    provider_stream,
+)
 from chatbot.types import ToolResult, ToolUse, Usage, User
 
 if TYPE_CHECKING:
@@ -51,6 +61,27 @@ class TraceSpan:
             }
         )
         self.span.set_status(Status(StatusCode.ERROR, message))
+
+    def served_model(self, qualified_name: str) -> None:
+        provider, _, model = qualified_name.partition(":")
+        self.set(
+            {
+                "gen_ai.provider.name": provider,
+                "gen_ai.response.model": model or qualified_name,
+                "langfuse.observation.model.name": model or qualified_name,
+            }
+        )
+
+    def cost(self, cost_usd: Decimal | None) -> None:
+        if cost_usd is not None:
+            cost = float(cost_usd)
+            self.set(
+                {
+                    "chatbot.cost_usd": cost,
+                    "chatbot.cost_calculated": True,
+                    "langfuse.observation.cost_details": json.dumps({"total": cost}),
+                }
+            )
 
     def usage(self, usage: Usage) -> None:
         if not self.span.is_recording():
@@ -177,6 +208,13 @@ class Tracing:
                 try:
                     yield active
                 finally:
+                    active.set(
+                        {
+                            "chatbot.usage.input_tokens": turn.input_tokens,
+                            "chatbot.usage.output_tokens": turn.output_tokens,
+                            "chatbot.cost_usd": float(turn.cost_usd),
+                        }
+                    )
                     if active.failed:
                         session.error("Turn failed", "turn_failed")
         finally:
@@ -236,20 +274,24 @@ class TracedProvider:
             "chatbot.cost_calculated": False,
         }
         with self._tracing.span("llm", attributes) as span:
-            stream = self._provider.stream(request)
             started = monotonic()
             first_text = True
-            try:
+            served: str | None = None
+            async with provider_stream(self._provider, request) as stream:
                 async for event in stream:
+                    if (
+                        isinstance(event, (LLMTextDelta, LLMToolCall, LLMUsage))
+                        and event.model
+                        and event.model != served
+                    ):
+                        served = event.model
+                        span.served_model(served)
                     if isinstance(event, LLMUsage):
                         span.usage(event.usage)
+                        span.cost(event.cost_usd)
                     elif isinstance(event, LLMStop):
                         span.set({"gen_ai.response.finish_reasons": [event.reason]})
                     elif isinstance(event, LLMTextDelta) and event.text and first_text:
                         span.set({"chatbot.time_to_first_token_ms": (monotonic() - started) * 1000})
                         first_text = False
                     yield event
-            finally:
-                close = getattr(stream, "aclose", None)
-                if close is not None:
-                    await close()

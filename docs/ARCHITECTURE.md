@@ -84,10 +84,12 @@ line in the registry.
 
 ### 3.2 LLM gateway
 
-The gateway is an in-process wrapper around providers. It owns the fallback
-chain, retries with backoff, timeouts, and cost calculation from a price table.
-It implements the same `LLMProvider` interface, so the agent does not know
-whether it is talking to one provider or to a chain.
+The gateway implements `LLMProvider` around an ordered chain of adapters.
+It retries transient errors with capped exponential backoff and jitter before
+trying the next model. Each SDK enforces the request timeout. After the first
+text, tool call or final usage event reaches the agent, a failure ends the stream.
+The gateway prices the usage from the model that served each call. The agent
+sums those amounts across tool steps and summary calls into the stored turn.
 
 A LiteLLM proxy can be added later as just another adapter, when several teams
 or apps share LLM access.
