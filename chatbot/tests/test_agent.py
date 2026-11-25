@@ -156,7 +156,10 @@ async def test_step_limit_saves_failed_turn_with_paired_tools() -> None:
 async def test_partial_provider_failure_is_saved_and_can_be_followed_up() -> None:
     agent, store, provider, user, session = await setup(
         [
-            [LLMTextDelta(text="Partial"), ProviderError("Unavailable", retryable=True)],
+            [
+                LLMTextDelta(text="Partial", model="other:fallback"),
+                ProviderError("Unavailable", retryable=True),
+            ],
             answer(),
         ]
     )
@@ -164,6 +167,7 @@ async def test_partial_provider_failure_is_saved_and_can_be_followed_up() -> Non
     assert isinstance(events[-1], TurnFailed) and events[-1].retryable
     messages = await store.list_messages(session.id, user.id)
     assert messages[-1].content == [Text(text="Partial")]
+    assert messages[-1].model == "other:fallback"
     _ = [event async for event in agent.respond(session.id, "Try again", user)]
     assert provider.requests[1].messages[:2] == messages
 

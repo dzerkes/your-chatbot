@@ -8,6 +8,7 @@ from uuid import uuid4
 
 import anthropic
 import httpx
+import httpx2
 import openai
 import pytest
 from anthropic import AsyncAnthropic
@@ -48,6 +49,8 @@ class RecordedStream:
 
     async def __aiter__(self) -> AsyncIterator[Any]:
         for event in self.events:
+            if isinstance(event, Exception):
+                raise event
             yield event
 
 
@@ -221,6 +224,15 @@ async def test_openai_history_tools_and_request_mapping() -> None:
             "strict": False,
         }
     ]
+
+
+@pytest.mark.parametrize("kind", ["openai", "anthropic"])
+async def test_transport_error_during_stream_is_retryable(kind: str) -> None:
+    llm, client = provider(kind, f"{kind}_text_stream.json")
+    client.messages.stream.events = [httpx2.ReadError("disconnected")]
+    with pytest.raises(ProviderError) as caught:
+        _ = [event async for event in llm.stream(request())]
+    assert caught.value.retryable and client.messages.stream.closed
 
 
 async def test_openai_incomplete_stream_and_bad_arguments() -> None:

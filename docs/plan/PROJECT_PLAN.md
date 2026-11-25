@@ -410,7 +410,7 @@ real tracing, before making any single layer good.
 
 ## Phase 4: Governance (M4)
 
-### [ ] C25 `feat(gateway): add fallbacks, retries and cost accounting`
+### [x] C25 `feat(gateway): add fallbacks, retries and cost accounting`
 
 - **Goal:** one place for reliability and spend.
 - **Files:** `chatbot/src/chatbot/llm/{gateway,pricing}.py`.
@@ -420,6 +420,9 @@ real tracing, before making any single layer good.
   table per model and written to the turn and the span.
 - **Done when:** fault-injection tests show retry then fallback, and each turn
   has a cost.
+- **Verification:** scripted failures exercise ordered fallbacks, bounded retries
+  and interrupted streams. CLI integration tests compare the priced usage of a
+  multi-step turn with its Postgres record and exported generation spans.
 
 ### [ ] C26 `feat(limits): add per-user rate limits and cost caps`
 

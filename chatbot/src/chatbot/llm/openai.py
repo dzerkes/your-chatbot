@@ -5,6 +5,7 @@ import logging
 from collections.abc import AsyncIterator, Sequence
 from typing import Any, cast
 
+import httpx2
 from openai import APIConnectionError, APIError, APIStatusError, AsyncOpenAI, not_given, omit
 from openai.types.responses import ResponseInputParam, ToolParam
 
@@ -23,6 +24,7 @@ from chatbot.llm.base import (
 from chatbot.types import Message, Text, ToolResult, ToolUse, Usage
 
 logger = logging.getLogger(__name__)
+_TRANSIENT_STREAM_ERRORS = {"server_error", "rate_limit_exceeded", "vector_store_timeout"}
 
 
 def _input_items(messages: Sequence[Message]) -> ResponseInputParam:
@@ -134,20 +136,30 @@ class _StreamTranslator:
                     if detail == "content_filter"
                     else "unknown"
                 )
-            raw_usage = response.get("usage") or {}
+            raw_usage = response.get("usage")
+            if (
+                not isinstance(raw_usage, dict)
+                or not {"input_tokens", "output_tokens"} <= raw_usage.keys()
+            ):
+                raise ProviderError("Response did not include usage")
             input_details = raw_usage.get("input_tokens_details") or {}
             usage = Usage(
-                input_tokens=raw_usage.get("input_tokens", 0),
-                output_tokens=raw_usage.get("output_tokens", 0),
+                input_tokens=raw_usage["input_tokens"],
+                output_tokens=raw_usage["output_tokens"],
                 cache_read_input_tokens=input_details.get("cached_tokens", 0),
                 cache_creation_input_tokens=input_details.get("cache_write_tokens", 0),
             )
             self._completed = True
             return [LLMUsage(usage=usage), LLMStop(reason=reason)]
         if kind == "response.failed":
-            raise ProviderError("OpenAI response failed")
+            error = event["response"].get("error") or {}
+            raise ProviderError(
+                "OpenAI response failed", retryable=error.get("code") in _TRANSIENT_STREAM_ERRORS
+            )
         if kind == "error":
-            raise ProviderError("OpenAI stream failed")
+            raise ProviderError(
+                "OpenAI stream failed", retryable=event.get("code") in _TRANSIENT_STREAM_ERRORS
+            )
         return []
 
     def finish(self) -> None:
@@ -207,13 +219,17 @@ class OpenAIProvider:
         except ProviderError:
             raise
         # Users get a generic message; operators need the provider's reason in the logs.
-        except APIConnectionError as exc:
+        except (APIConnectionError, httpx2.TransportError) as exc:
             logger.warning("OpenAI connection failed: %s", exc)
             raise ProviderError("OpenAI connection failed", retryable=True) from exc
         except APIStatusError as exc:
             logger.warning("OpenAI request failed (request_id=%s): %s", exc.request_id, exc.message)
-            retryable = exc.status_code == 429 or exc.status_code >= 500
+            retryable = exc.status_code in {408, 409, 429} or exc.status_code >= 500
+            if exc.code == "insufficient_quota":
+                retryable = False
             raise ProviderError("OpenAI request failed", retryable=retryable) from exc
         except APIError as exc:
             logger.warning("OpenAI request failed: %s", exc.message)
-            raise ProviderError("OpenAI request failed") from exc
+            raise ProviderError(
+                "OpenAI request failed", retryable=exc.code in _TRANSIENT_STREAM_ERRORS
+            ) from exc

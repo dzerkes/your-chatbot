@@ -111,6 +111,9 @@ services:
       LLM_MAX_OUTPUT_TOKENS: ${LLM_MAX_OUTPUT_TOKENS:-2048}
       LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-60}
       LLM_MAX_RETRIES: ${LLM_MAX_RETRIES:-2}
+      LLM_RETRY_BASE_SECONDS: ${LLM_RETRY_BASE_SECONDS:-0.5}
+      LLM_RETRY_MAX_SECONDS: ${LLM_RETRY_MAX_SECONDS:-8}
+      LLM_PRICES_FILE: ${LLM_PRICES_FILE:+/etc/chatbot/prices.toml}
       AGENT_MAX_STEPS: ${AGENT_MAX_STEPS:-8}
       CONTEXT_STRATEGY: ${CONTEXT_STRATEGY:-summary,compact_tools}
       CONTEXT_MAX_INPUT_TOKENS: ${CONTEXT_MAX_INPUT_TOKENS:-60000}
@@ -132,6 +135,9 @@ services:
       MCP_TOKEN_SECRET: ${MCP_TOKEN_SECRET:?Set MCP_TOKEN_SECRET in .env}
       AUTH_MODE: ${AUTH_MODE:-dev}
       AUTH_DEV_TOKENS: ${AUTH_DEV_TOKENS:-dev-token-alice:alice:employees|engineering,dev-token-bob:bob:employees|finance|leadership}
+    configs:
+      - source: llm_prices
+        target: /etc/chatbot/prices.toml
     ports:
       - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
     depends_on:
@@ -173,3 +179,7 @@ services:
 volumes:
   postgres_data:
   model_cache:
+
+configs:
+  llm_prices:
+    file: ${LLM_PRICES_FILE:-./chatbot/src/chatbot/llm/prices.toml}

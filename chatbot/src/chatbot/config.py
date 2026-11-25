@@ -1,7 +1,7 @@
 """Validated application settings; the only application module that reads the environment."""
 
 from decimal import Decimal
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Self
 
 from pydantic import (
     Field,
@@ -11,6 +11,7 @@ from pydantic import (
     PositiveInt,
     SecretStr,
     field_validator,
+    model_validator,
 )
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
@@ -56,7 +57,10 @@ class Settings(BaseSettings):
     openai_api_key: SecretStr = SecretStr("")
     llm_max_output_tokens: PositiveInt = 2048
     llm_timeout_seconds: PositiveFloat = 60
-    llm_max_retries: NonNegativeInt = 2
+    llm_max_retries: NonNegativeInt = 2  # per model, before falling back
+    llm_retry_base_seconds: Annotated[PositiveFloat, Field(allow_inf_nan=False)] = 0.5
+    llm_retry_max_seconds: Annotated[PositiveFloat, Field(allow_inf_nan=False)] = 8.0
+    llm_prices_file: str | None = None  # TOML that adds to or overrides llm/prices.toml
     agent_max_steps: PositiveInt = 8
 
     # Comma-separated pipeline, applied in this order: summary, compact_tools,
@@ -147,3 +151,9 @@ class Settings(BaseSettings):
         for model in value:
             cls.validate_model(model)
         return value
+
+    @model_validator(mode="after")
+    def validate_retry_delays(self) -> Self:
+        if self.llm_retry_max_seconds < self.llm_retry_base_seconds:
+            raise ValueError("llm_retry_max_seconds must be at least llm_retry_base_seconds")
+        return self

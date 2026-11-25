@@ -1,6 +1,8 @@
 """The interface used by the agent and implemented by every provider."""
 
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from decimal import Decimal
 from typing import Annotated, Literal, Protocol
 
 from pydantic import Field, JsonValue, PositiveFloat, PositiveInt, field_validator
@@ -34,16 +36,22 @@ class LLMRequest(DomainModel):
 class LLMTextDelta(DomainModel):
     type: Literal["text_delta"] = "text_delta"
     text: str
+    model: str | None = None  # The gateway identifies the serving model even on partial output.
 
 
 class LLMToolCall(DomainModel):
     type: Literal["tool_call"] = "tool_call"
     tool_use: ToolUse
+    model: str | None = None
 
 
 class LLMUsage(DomainModel):
     type: Literal["usage"] = "usage"
     usage: Usage
+    # Set by the gateway: the provider:model that served the call (a fallback may
+    # differ from the request's), and its cost; None when that model has no price.
+    model: str | None = None
+    cost_usd: Decimal | None = Field(default=None, ge=0)
 
 
 type StopReason = Literal[
@@ -79,3 +87,17 @@ class LLMProvider(Protocol):
     async def aclose(self) -> None:
         """Release resources owned by the provider."""
         ...
+
+
+@asynccontextmanager
+async def provider_stream(
+    provider: LLMProvider, request: LLMRequest
+) -> AsyncIterator[AsyncIterator[LLMEvent]]:
+    """Close the underlying response when the consumer finishes or disconnects."""
+    stream = provider.stream(request)
+    try:
+        yield stream
+    finally:
+        close = getattr(stream, "aclose", None)
+        if close is not None:
+            await close()

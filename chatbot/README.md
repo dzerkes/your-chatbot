@@ -128,7 +128,7 @@ from chatbot.llm.registry import ProviderRegistry
 
 async def stream_reply(request: LLMRequest) -> None:
     settings = Settings()
-    provider = ProviderRegistry(settings).get_primary()
+    provider = ProviderRegistry(settings).primary_gateway()
     try:
         async for event in provider.stream(request):
             if isinstance(event, LLMTextDelta):
@@ -138,10 +138,29 @@ async def stream_reply(request: LLMRequest) -> None:
 ```
 
 Set `LLM_PRIMARY=anthropic:claude-sonnet-5-5` with `ANTHROPIC_API_KEY`, or
-`LLM_PRIMARY=openai:gpt-5.5` with `OPENAI_API_KEY`. `ProviderRegistry.get(name)`
-also accepts an explicit `provider:model` name. Close the selected adapter after
-use. The OpenAI adapter uses the Responses API with `store=False`; tool errors
-are sent as JSON objects with an `error` field.
+`LLM_PRIMARY=openai:gpt-6-luna` with `OPENAI_API_KEY`. Provide a key for each
+provider in the chain. `ProviderRegistry.get(name)` constructs an individual
+adapter. The OpenAI adapter uses the Responses API with `store=False` and
+sends tool errors as JSON objects with an `error` field.
+
+The CLI and backend retry transient failures up to `LLM_MAX_RETRIES` times per
+model (default 2). The first wait is randomized between zero and
+`LLM_RETRY_BASE_SECONDS` (default 0.5). Its upper bound doubles on each retry
+up to `LLM_RETRY_MAX_SECONDS` (default 8). When retries run out or a model
+returns a permanent error, the next distinct model in `LLM_FALLBACKS` gets the
+same request. Once a model has delivered text, a tool call, or final usage,
+a stream failure ends the call. Summaries retry on `LLM_SUMMARY_MODEL`.
+
+Each call uses the serving model's rates for uncached input, cache reads,
+cache writes and output. Set `LLM_PRICES_FILE` to a local TOML file to add or
+replace a model's rates. Compose mounts that file into the backend. Rates are
+in USD per million tokens. The bundled table includes sources and examples of
+long-context rates. [Model price table](src/chatbot/llm/prices.toml)
+
+Turn totals add all priced usage reported for tool steps, the final answer
+and any summary call, then round once to six decimal places for persistence.
+A missing price logs a startup warning. An unpriced call or a stream that
+ends before the provider reports usage contributes no amount to the total.
 
 `ScriptedProvider` accepts one sequence of events or exceptions per request and
 records copies of requests for assertions. It needs no API key. Adapter unit
@@ -287,7 +306,7 @@ conflicts between separate instances.
 
 The composition root closes provider clients and both database pools on exit.
 For unit tests, construct `Agent` with `MemoryStore`, `ScriptedProvider` and a
-`ToolRegistry`. Cost fields remain zero until the pricing gateway in C25.
+`ToolRegistry`.
 
 ## Model context
 
@@ -347,9 +366,9 @@ ID is saved on the turn and included in streamed events and logs.
 Generation spans include provider/model, input/output/cache token counts,
 stop reason, latency and time to first text. Tool spans include arguments,
 result size, latency and error status. Cached tokens are represented as
-exclusive usage categories in Langfuse to avoid double counting. Generation
-cost attributes currently carry `chatbot.cost_usd=0` and
-`chatbot.cost_calculated=false`; local pricing arrives in C25.
+exclusive usage categories in Langfuse to avoid double counting. Priced
+generations report `chatbot.cost_usd`, `chatbot.cost_calculated=true` and
+Langfuse cost details. An unpriced generation has `chatbot.cost_calculated=false`.
 
 `build_chatbot` owns a private tracer provider and batch exporter. It closes
 clients and pools, then drains the exporter on exit; it leaves the process's

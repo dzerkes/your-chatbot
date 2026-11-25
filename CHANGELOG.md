@@ -14,8 +14,10 @@ All important changes to this project are recorded here, newest first.
 
 | Plan id | Commit | Type | Change |
 |---|---|---|---|
-| C24 | Pending | Added | User memory behind `MEMORY_ENABLED`: `memory` tool (remember, recall, forget), `user_memory` table, recent facts in the system prompt, `GET/DELETE /memories` and a "What I remember" UI panel. |
-| C24 | Pending | Security | `remember` must quote the user's own words, checked against what they typed in the session, so document or tool text cannot become a memory; the app role cannot update facts, the read-only role cannot read them, and the tool runs in-process so the MCP server stays read-only. |
+| C25 | Pending | Added | The LLM gateway retries transient failures with capped backoff and jitter, then tries the configured fallback models in order. A partial response is preserved if streaming fails. |
+| C25 | Pending | Added | Per-model USD rates account for cache reads, cache writes and long-context pricing. Generation spans identify the serving model and cost. Saved turns and completion events total reported costs across tool steps and summary calls. |
+| C24 | `b614f2d` | Added | User memory behind `MEMORY_ENABLED`: `memory` tool (remember, recall, forget), `user_memory` table, recent facts in the system prompt, `GET/DELETE /memories` and a "What I remember" UI panel. |
+| C24 | `b614f2d` | Security | `remember` must quote the user's own words, checked against what they typed in the session, so document or tool text cannot become a memory; the app role cannot update facts, the read-only role cannot read them, and the tool runs in-process so the MCP server stays read-only. |
 | C23 | `c49396e` | Added | Context pipeline (`CONTEXT_STRATEGY=summary,compact_tools`, default): tool results from earlier turns become one-line notes, a running summary written by `LLM_SUMMARY_MODEL` replaces older turns in large steps (turn trigger or 80% of the token budget), and a final budget guard. |
 | C23 | `c49396e` | Added | Prompt caching: Anthropic cache breakpoints after tools, system prompt and conversation; OpenAI `prompt_cache_key` per session. `PROMPT_CACHING` toggles it. |
 | C23 | `c49396e` | Added | Migration for `summary_through_sequence` and `summary_updated_at` on sessions, and a forward-only `update_summary` store method; `update_session` now changes only the title. |

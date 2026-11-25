@@ -2,9 +2,10 @@
 
 import asyncio
 import logging
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from contextlib import aclosing
 from datetime import UTC, datetime
+from decimal import ROUND_HALF_UP, Decimal
 from time import monotonic
 from typing import Literal, TypedDict
 from uuid import UUID, uuid4
@@ -32,6 +33,7 @@ from chatbot.llm.base import (
     LLMTextDelta,
     LLMToolCall,
     LLMUsage,
+    provider_stream,
 )
 from chatbot.logging import log_context
 from chatbot.safety import wrap_tool_results
@@ -122,14 +124,7 @@ class Agent:
                             span.set({"chatbot.turn.status": "failed"})
                             span.error(event.message, event.code)
                         elif isinstance(event, TurnCompleted):
-                            span.set(
-                                {
-                                    "chatbot.turn.status": "completed",
-                                    "chatbot.usage.input_tokens": event.usage.input_tokens,
-                                    "chatbot.usage.output_tokens": event.usage.output_tokens,
-                                    "chatbot.cost_usd": float(event.cost_usd),
-                                }
-                            )
+                            span.set({"chatbot.turn.status": "completed"})
                         yield event
 
     async def _memory_context(self, user: User) -> str:
@@ -153,7 +148,8 @@ class Agent:
         current: list[Message],
         summary: SessionSummary | None,
         system: str,
-    ) -> tuple[SessionSummary | None, Usage]:
+        on_usage: Callable[[LLMUsage], None],
+    ) -> SessionSummary | None:
         """Fold old turns into the session summary when due; never fail the turn for it."""
         assert self.summarizer is not None
         try:
@@ -173,20 +169,20 @@ class Agent:
                 pressure = True
             due = self.summarizer.due(history, current, summary, under_pressure=pressure)
             if not due:
-                return summary, Usage()
-            updated, usage = await self.summarizer.summarize(summary, due)
+                return summary
+            updated, _ = await self.summarizer.summarize(summary, due, on_usage=on_usage)
             saved = await self.store.update_summary(
                 turn.session_id, user.id, updated.text, updated.through_sequence
             )
             logger.info(
                 "Summarized %d turns through message %d", len(due), updated.through_sequence
             )
-            return _stored_summary(saved), usage
+            return _stored_summary(saved)
         except Exception:
             logger.warning(
                 "Could not update the session summary; continuing without it", exc_info=True
             )
-            return summary, Usage()
+            return summary
 
     async def _respond(self, turn: Turn, text: str, user: User) -> AsyncGenerator[Event, None]:
         started = monotonic()
@@ -215,6 +211,13 @@ class Agent:
         usage = Usage()
         pending: list[ContentBlock] = []
         step_usage: Usage | None = None
+        served = self.provider.name
+
+        def record_usage(event: LLMUsage) -> None:
+            nonlocal usage
+            usage = _add_usage(usage, event.usage)
+            if event.cost_usd is not None:
+                turn.cost_usd += event.cost_usd
 
         def append(
             role: Literal["user", "assistant", "tool"],
@@ -237,11 +240,6 @@ class Agent:
         append("user", [Text(text=text)])
         system = self.system + await self._memory_context(user)
         summary = _stored_summary(session)
-        if self.summarizer is not None:
-            summary, summary_usage = await self._update_summary(
-                turn, user, history, messages, summary, system
-            )
-            usage = _add_usage(usage, summary_usage)
         context = ToolContext(
             user=user,
             session_id=turn.session_id,
@@ -257,9 +255,14 @@ class Agent:
         }
         failure: ChatbotError | None = None
         try:
+            if self.summarizer is not None:
+                summary = await self._update_summary(
+                    turn, user, history, messages, summary, system, record_usage
+                )
             for _step in range(self.settings.agent_max_steps):
                 pending = []
                 step_usage = None
+                served = self.provider.name  # the gateway reports a fallback model
                 stop: LLMStop | None = None
                 definitions = self.tools.definitions()
                 built = self.context_builder.build(
@@ -274,20 +277,21 @@ class Agent:
                     timeout_seconds=self.settings.llm_timeout_seconds,
                     cache_key=str(turn.session_id) if self.settings.prompt_caching else None,
                 )
-                stream = self.provider.stream(request)
-                try:
+                async with provider_stream(self.provider, request) as stream:
                     async for event in stream:
                         if stop is not None:
                             raise ProviderError("Provider sent events after its stop reason")
                         if isinstance(event, LLMTextDelta):
                             if not event.text:
                                 continue
+                            served = event.model or served
                             if pending and isinstance(pending[-1], Text):
                                 pending[-1].text += event.text
                             else:
                                 pending.append(Text(text=event.text))
                             yield TextDelta(**ids, text=event.text)
                         elif isinstance(event, LLMToolCall):
+                            served = event.model or served
                             if event.tool_use.id in used_calls:
                                 raise ProviderError("Provider reused a tool call ID")
                             used_calls.add(event.tool_use.id)
@@ -296,13 +300,10 @@ class Agent:
                             if step_usage is not None:
                                 raise ProviderError("Provider sent duplicate usage")
                             step_usage = event.usage
-                            usage = _add_usage(usage, event.usage)
+                            record_usage(event)
+                            served = event.model or served
                         elif isinstance(event, LLMStop):
                             stop = event
-                finally:
-                    close = getattr(stream, "aclose", None)
-                    if close is not None:
-                        await close()
                 if stop is None or step_usage is None:
                     raise ProviderError("Provider returned an incomplete response", retryable=True)
                 calls = [block for block in pending if isinstance(block, ToolUse)]
@@ -320,7 +321,7 @@ class Agent:
                     reply = "The model declined to answer this request."
                     pending.append(Text(text=reply))
                     yield TextDelta(**ids, text=reply)
-                append("assistant", pending, model=self.provider.name)
+                append("assistant", pending, model=served)
                 pending = []
                 if not calls:
                     break
@@ -344,7 +345,7 @@ class Agent:
                 raise StepLimitExceeded("The agent reached its step limit")
         except (asyncio.CancelledError, GeneratorExit):
             self._finish_messages(
-                messages, pending, step_usage, turn, next_sequence, "Turn was interrupted"
+                messages, pending, served, step_usage, turn, next_sequence, "Turn was interrupted"
             )
             try:
                 with CancelScope(shield=True):
@@ -359,7 +360,9 @@ class Agent:
             failure = ChatbotError("Could not complete the response")
 
         if failure is not None:
-            self._finish_messages(messages, pending, step_usage, turn, next_sequence, str(failure))
+            self._finish_messages(
+                messages, pending, served, step_usage, turn, next_sequence, str(failure)
+            )
         try:
             await self._save(turn, messages, user, usage, started, failed=failure is not None)
         except Exception:
@@ -377,6 +380,7 @@ class Agent:
         self,
         messages: list[Message],
         pending: list[ContentBlock],
+        served: str,
         step_usage: Usage | None,
         turn: Turn,
         next_sequence: int,
@@ -391,7 +395,7 @@ class Agent:
                     sequence=next_sequence + len(messages),
                     role="assistant",
                     content=partial,
-                    model=self.provider.name,
+                    model=served,
                     usage=step_usage,
                 )
             )
@@ -435,4 +439,6 @@ class Agent:
         turn.latency_ms = int((monotonic() - started) * 1000)
         for key, value in usage.model_dump().items():
             setattr(turn, key, value)
+        # Match Postgres NUMERIC(12,6) once, after summing every generation in the turn.
+        turn.cost_usd = turn.cost_usd.quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
         await self.store.save_turn(turn, messages, user.id)
