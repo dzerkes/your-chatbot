@@ -3,9 +3,11 @@
 import asyncio
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from decimal import Decimal
 from uuid import UUID
 
 from chatbot.errors import ConflictError, NotFoundError
+from chatbot.limits import ChatLimits, window_starts
 from chatbot.store.base import Session, Turn, validate_turn_messages
 from chatbot.types import Message, User
 
@@ -85,13 +87,35 @@ class MemoryStore:
                 self._sessions[session_id] = stored
             return stored.model_copy(deep=True)
 
+    async def reserve_turn(self, turn: Turn, owner_id: UUID, limits: ChatLimits) -> None:
+        async with self._lock:
+            session = self._sessions.get(turn.session_id)
+            if session is None or session.owner_id != owner_id:
+                raise NotFoundError("Session not found")
+            minute, midnight = window_starts(turn.created_at)
+            owned = [
+                t for t in self._turns.values() if self._sessions[t.session_id].owner_id == owner_id
+            ]
+            limits.check(
+                sum(t.created_at > minute for t in owned),
+                sum((t.cost_usd for t in owned if t.created_at >= midnight), Decimal(0)),
+            )
+            if turn.id in self._turns:
+                raise ConflictError("Turn already exists")
+            self._turns[turn.id] = turn.model_copy(update={"status": "running"}, deep=True)
+
     async def save_turn(self, turn: Turn, messages: Sequence[Message], owner_id: UUID) -> None:
         validate_turn_messages(turn, messages)
         async with self._lock:
             session = self._sessions.get(turn.session_id)
             if session is None or session.owner_id != owner_id:
                 raise NotFoundError("Session not found")
-            if turn.id in self._turns:
+            previous = self._turns.get(turn.id)
+            if previous and not (
+                previous.status == "running"
+                and previous.session_id == turn.session_id
+                and turn.status in {"completed", "failed"}
+            ):
                 raise ConflictError("Turn already exists")
             existing = {message.sequence for message in self._messages[turn.session_id]}
             if existing.intersection(message.sequence for message in messages):

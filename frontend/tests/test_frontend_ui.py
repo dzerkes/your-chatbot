@@ -67,6 +67,17 @@ class FakeApi:
         prompt = json.loads(request.content)["message"]
         self.prompts.append(prompt)
         turn_id, call_id = str(uuid4()), "call-" + str(uuid4())
+        if self.failure == "limit":
+            event = {
+                "type": "turn_failed",
+                "session_id": session_id,
+                "message": "Daily spending limit reached. Try again after midnight UTC.",
+            }
+            return httpx.Response(
+                200,
+                headers={"content-type": "text/event-stream"},
+                text=f"event: turn_failed\ndata: {json.dumps(event)}\n\n",
+            )
         result = {
             "type": "tool_result",
             "tool_use_id": call_id,
@@ -205,3 +216,12 @@ def test_memory_panel_lists_facts_and_forgets_one(service: FakeApi) -> None:
     assert [m["id"] for m in service.memories["alice"]] == [2]
     [panel] = [e for e in app.sidebar.expander if "remember" in e.label]
     assert panel.label == "What I remember (1)"
+
+
+def test_limit_message_is_visible_after_rerun(service: FakeApi) -> None:
+    service.failure = "limit"
+    app = AppTest.from_file(str(APP), default_timeout=10).run()
+    app.text_input(key="access_token").set_value("alice-token").run()
+    app.chat_input[0].set_value("Hi").run()
+    assert any("after midnight UTC" in error.value for error in app.error)
+    assert service.prompts == ["Hi"]

@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 
 from pydantic import AwareDatetime, Field, NonNegativeInt
 
+from chatbot.limits import ChatLimits
 from chatbot.types import DomainModel, Message, User
 
 
@@ -65,6 +66,9 @@ class SessionStore(Protocol):
 
 
 class MessageStore(Protocol):
+    async def reserve_turn(self, turn: Turn, owner_id: UUID, limits: ChatLimits) -> None:
+        """Check owner-wide usage and reserve a request atomically."""
+
     async def save_turn(self, turn: Turn, messages: Sequence[Message], owner_id: UUID) -> None:
         """Insert one turn and all its messages atomically."""
 

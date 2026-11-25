@@ -15,6 +15,7 @@ from psycopg_pool import AsyncConnectionPool
 
 from chatbot.config import Settings
 from chatbot.errors import ConflictError, NotFoundError
+from chatbot.limits import ChatLimits, window_starts
 from chatbot.store.base import Session, Turn, validate_turn_messages
 from chatbot.types import Message, User
 
@@ -164,6 +165,41 @@ class PostgresStore:
             raise NotFoundError("Session not found")
         return current
 
+    async def reserve_turn(self, turn: Turn, owner_id: UUID, limits: ChatLimits) -> None:
+        async with self._pool.connection() as conn:
+            # Serialize admission across this owner's sessions and API workers.
+            owner = await conn.execute(
+                """
+                SELECT u.id FROM users u JOIN sessions s ON s.owner_id = u.id
+                WHERE u.id = %s AND s.id = %s FOR UPDATE OF u
+                """,
+                (owner_id, turn.session_id),
+            )
+            if await owner.fetchone() is None:
+                raise NotFoundError("Session not found")
+            minute, midnight = window_starts(turn.created_at)
+            cursor = await conn.execute(
+                """
+                SELECT count(*) FILTER (WHERE t.created_at > %s),
+                       coalesce(sum(t.cost_usd) FILTER (WHERE t.created_at >= %s), 0)
+                FROM turns t JOIN sessions s ON t.session_id = s.id
+                WHERE s.owner_id = %s AND t.created_at >= %s
+                """,
+                (minute, midnight, owner_id, min(minute, midnight)),
+            )
+            row = await cursor.fetchone()
+            assert row is not None
+            limits.check(*row)
+            inserted = await conn.execute(
+                """
+                INSERT INTO turns (id, session_id, status, trace_id, created_at)
+                SELECT %s, id, 'running', %s, %s FROM sessions WHERE id = %s AND owner_id = %s
+                """,
+                (turn.id, turn.trace_id, turn.created_at, turn.session_id, owner_id),
+            )
+            if not inserted.rowcount:
+                raise NotFoundError("Session not found")
+
     async def save_turn(self, turn: Turn, messages: Sequence[Message], owner_id: UUID) -> None:
         validate_turn_messages(turn, messages)
         try:
@@ -179,6 +215,16 @@ class PostgresStore:
                         )
                         SELECT %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                         FROM sessions WHERE id = %s AND owner_id = %s
+                        ON CONFLICT (id) DO UPDATE SET
+                            status = excluded.status, trace_id = excluded.trace_id,
+                            input_tokens = excluded.input_tokens,
+                            output_tokens = excluded.output_tokens,
+                            cache_read_input_tokens = excluded.cache_read_input_tokens,
+                            cache_creation_input_tokens = excluded.cache_creation_input_tokens,
+                            cost_usd = excluded.cost_usd, latency_ms = excluded.latency_ms,
+                            updated_at = excluded.updated_at, completed_at = excluded.completed_at
+                        WHERE turns.status = 'running' AND turns.session_id = excluded.session_id
+                          AND excluded.status IN ('completed', 'failed')
                         RETURNING id
                         """,
                         (
@@ -200,6 +246,12 @@ class PostgresStore:
                         ),
                     )
                     if await cursor.fetchone() is None:
+                        owned = await conn.execute(
+                            "SELECT id FROM sessions WHERE id=%s AND owner_id=%s",
+                            (turn.session_id, owner_id),
+                        )
+                        if await owned.fetchone():
+                            raise ConflictError("Turn already exists")
                         raise NotFoundError("Session not found")
                     for message in messages:
                         await conn.execute(

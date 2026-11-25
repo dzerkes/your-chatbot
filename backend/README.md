@@ -102,3 +102,20 @@ API tests inject `MemoryStore` and `ScriptedProvider` through `create_app`'s
 `chatbot_factory` argument. They cover authentication, ownership, SSE framing,
 history, failures, validation and both ASGI disconnect paths. Integration tests
 exercise the same API against the real history store and seeded project tool.
+
+
+## Chat limits
+
+The API counts admitted chat turns across all sessions belonging to the authenticated
+user. `RATE_LIMIT_REQUESTS_PER_MINUTE` defaults to 20 in a rolling 60-second
+window. Postgres reserves each admitted turn before generation so simultaneous
+requests count immediately. A tool call or provider retry belongs to the same turn.
+
+`COST_CAP_USD_PER_USER_PER_DAY` defaults to 2.00 USD. Admission stops once
+recorded costs for turns started since midnight UTC reach the cap. Failed turns
+count toward both limits. Already admitted turns can take total spend above the
+cap because their costs arrive at completion. Totals use the gateway's configured
+model prices and reported usage.
+
+A blocked request yields one terminal `turn_failed` SSE event with code
+`rate_limit_exceeded` or `cost_cap_exceeded`. The UI displays its retry message.
