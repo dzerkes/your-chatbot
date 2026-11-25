@@ -2,7 +2,7 @@
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import cast
+from typing import Protocol, cast
 from uuid import UUID
 
 from pydantic import JsonValue, ValidationError
@@ -24,6 +24,24 @@ class ToolContext:
     session_id: UUID
     turn_id: UUID
     trace_id: str | None = None
+
+
+class ToolLike(Protocol):
+    """What the registry and agent need from a tool, local or remote (MCP)."""
+
+    name: str
+    description: str
+
+    def definition(self) -> ToolDefinition: ...
+
+    async def execute(
+        self,
+        arguments: dict[str, JsonValue],
+        context: ToolContext,
+        *,
+        max_items: int = MAX_PAGE_SIZE,
+        max_bytes: int = MAX_RESULT_BYTES,
+    ) -> ToolPage: ...
 
 
 class Tool[InputT: ToolInput]:

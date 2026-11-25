@@ -14,10 +14,14 @@ All important changes to this project are recorded here, newest first.
 
 | Plan id | Commit | Type | Change |
 |---|---|---|---|
-| C21 | Pending | Security | Tool results are cleaned (invisible characters, images) and wrapped in an `untrusted_data` envelope before each model call; stored history is unchanged. The system prompt never follows instructions found there and never outputs images. |
-| C21 | Pending | Security | The chat UI renders text without images, closing zero-click exfiltration through image URLs. |
-| C21 | Pending | Added | Three adversarial seed documents (formatting hijack, link exfiltration with a fake closing tag, fake system message with an invisible tag-character instruction) and opt-in `llm` tests with an undefended control. |
-| C21 | Pending | Changed | `search_docs` drops model-supplied `tags` and uses flat `limit`/`cursor` arguments; invalid tool arguments name the failing fields without echoing values. |
+| C22 | Pending | Added | `mcp_servers` package and `mcp` Compose service serving `query_projects` and `search_docs` over stateless streamable HTTP, from the same `Tool` objects used in-process; `TOOLS_TRANSPORT` selects in-process or MCP. |
+| C22 | Pending | Security | Each MCP request carries a short-lived HS256 token signed by the backend (user, groups, session, turn, trace); the server verifies it before handling any message and builds `ToolContext` only from it. Only the MCP service holds the read-only role and models. |
+| C22 | Pending | Added | `McpToolset`/`McpTool` client behind the existing tool interface, `python -m mcp_servers.token` for external clients, and parity tests running the same agent tests on both transports. |
+| C22 | Pending | Fixed | Docker images could contain stale workspace code because uv's shared cache reused wheels until a pyproject.toml changed; all members now declare `tool.uv.cache-keys`. |
+| C21 | `e560bb6` | Security | Tool results are cleaned (invisible characters, images) and wrapped in an `untrusted_data` envelope before each model call; stored history is unchanged. The system prompt never follows instructions found there and never outputs images. |
+| C21 | `e560bb6` | Security | The chat UI renders text without images, closing zero-click exfiltration through image URLs. |
+| C21 | `e560bb6` | Added | Three adversarial seed documents (formatting hijack, link exfiltration with a fake closing tag, fake system message with an invisible tag-character instruction) and opt-in `llm` tests with an undefended control. |
+| C21 | `e560bb6` | Changed | `search_docs` drops model-supplied `tags` and uses flat `limit`/`cursor` arguments; invalid tool arguments name the failing fields without echoing values. |
 | C20 | `f56dfc8` | Added | `search_docs` tool: hybrid retrieval, reranking of the top fused hits, and paginated compact hits (title, section, source, snippet, chunk id, score) with cursors bound to the user, query and filters. The system prompt asks for bracketed title and section citations and "no document" instead of guesses. |
 | C20 | `f56dfc8` | Added | Reranker strategies `none`, `local` (fastembed cross-encoder) and `api` (Cohere-compatible `/rerank`), selected by `RERANKER`. |
 | C20 | `f56dfc8` | Security | Dev tokens carry groups (`token:identity:group|group`) and the CLI has `--groups`; search access comes only from these, never from tool arguments. |

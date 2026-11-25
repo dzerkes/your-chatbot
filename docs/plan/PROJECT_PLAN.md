@@ -334,7 +334,7 @@ real tracing, before making any single layer good.
   nothing) and takes flat `limit` and `cursor` arguments (small models
   misplaced the nested object). Invalid tool arguments now name the fields.
 
-### [ ] C22 `refactor(tools): serve tools over MCP`
+### [x] C22 `refactor(tools): serve tools over MCP`
 
 - **Goal:** tools become reusable by other clients.
 - **Files:** `mcp_servers/pyproject.toml`, `mcp_servers/data_server.py`,
@@ -346,6 +346,17 @@ real tracing, before making any single layer good.
   token; the server verifies it and never trusts identity from tool arguments.
 - **Done when:** the same agent tests pass with tools in-process and over MCP,
   and an external MCP client can list and call the tools.
+- **Verification:** `tests/test_mcp_tools.py` runs the same scripted agent
+  tests on both transports against a seeded database and checks that their
+  tool results are identical; `mcp_servers/tests` covers 401s (missing,
+  forged, expired and unsigned tokens) and a generic MCP client with a dev
+  token. Through Compose, bob's cited pricing answer went over MCP, and a plain
+  MCP client on localhost:8001 listed and called both tools.
+- **Also found:** Docker builds that share uv's cache installed stale workspace
+  code, because uv rebuilds a local package only when its pyproject.toml
+  changes. Every member now sets `tool.uv.cache-keys`. The C21 note that the
+  rebuilt stack ran the new defenses was likely wrong for that reason; the
+  C21 tests ran in-process and are unaffected.
 
 ---
 

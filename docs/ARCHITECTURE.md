@@ -107,6 +107,16 @@ Tool rules:
 - The user's identity comes from the server side of the session and is passed
   to tools in a `ToolContext`. The model can never set or change it.
 
+How it runs (C22): the `mcp` service (`mcp_servers/data_server.py`) serves the
+same `Tool` objects the chatbot can run in-process, over streamable HTTP, in
+stateless mode. `TOOLS_TRANSPORT` picks in-process (CLI default) or MCP
+(Compose). Across the boundary, the backend signs a short-lived HS256 token per
+call with the user's id, groups, session, turn and trace id, using a secret
+shared with the server (`MCP_TOKEN_SECRET`). The server verifies it before any
+MCP message is handled and builds `ToolContext` only from it. In Compose only
+the MCP server holds the read-only database role and loads the models; the
+backend holds neither.
+
 ### 3.4 SQL: a read-only role over curated views, not raw tables
 
 `query_projects` connects as `chatbot_ro`, a database role that can only

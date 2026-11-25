@@ -20,3 +20,8 @@ dev-mode-dirs = [".."]
 [tool.hatch.build.targets.wheel]
 only-include = ["__init__.py", "__main__.py", "app.py", "api_client.py", "config.py", "rendering.py"]
 sources = {"" = "frontend"}
+
+[tool.uv]
+# Rebuild this package when its sources change, not only its pyproject.toml.
+# Without this, Docker builds that share uv's cache installed stale code.
+cache-keys = [{ file = "pyproject.toml" }, { file = "*.py" }]

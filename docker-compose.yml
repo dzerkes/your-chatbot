@@ -44,6 +44,51 @@ services:
       postgres:
         condition: service_healthy
 
+  mcp:
+    build:
+      context: .
+      dockerfile: mcp_servers/Dockerfile
+      target: mcp
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FORMAT: ${LOG_FORMAT:-console}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-chatbot}
+      # Only the read-only role: the tools never write.
+      RO_DB_USER: ${RO_DB_USER:-chatbot_ro}
+      RO_DB_PASSWORD: ${RO_DB_PASSWORD:?Set RO_DB_PASSWORD in .env}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-local:BAAI/bge-small-en-v1.5}
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-384}
+      EMBEDDING_CACHE_DIR: /home/app/.cache/fastembed
+      RERANKER: ${RERANKER:-local}
+      RERANKER_MODEL: ${RERANKER_MODEL:-Xenova/ms-marco-MiniLM-L-6-v2}
+      RERANKER_API_URL: ${RERANKER_API_URL:-}
+      RERANKER_API_KEY: ${RERANKER_API_KEY:-}
+      RERANK_CANDIDATES: ${RERANK_CANDIDATES:-20}
+      RETRIEVAL_CANDIDATES: ${RETRIEVAL_CANDIDATES:-40}
+      RETRIEVAL_PAGE_SIZE: ${RETRIEVAL_PAGE_SIZE:-5}
+      MCP_SERVER_PORT: 8001
+      MCP_TOKEN_SECRET: ${MCP_TOKEN_SECRET:?Set MCP_TOKEN_SECRET in .env}
+    volumes:
+      # Embedding and reranker models download once, not on every container start.
+      - model_cache:/home/app/.cache/fastembed
+    ports:
+      # Published on localhost so external MCP clients can connect with a dev token.
+      - "127.0.0.1:${MCP_PORT:-8001}:8001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    stop_grace_period: 30s
+
   backend:
     build:
       context: .
@@ -58,8 +103,6 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-chatbot}
       APP_DB_USER: ${APP_DB_USER:-chatbot_app}
       APP_DB_PASSWORD: ${APP_DB_PASSWORD:?Set APP_DB_PASSWORD in .env}
-      RO_DB_USER: ${RO_DB_USER:-chatbot_ro}
-      RO_DB_PASSWORD: ${RO_DB_PASSWORD:?Set RO_DB_PASSWORD in .env}
       LLM_PRIMARY: ${LLM_PRIMARY:-anthropic:claude-sonnet-5-5}
       LLM_FALLBACKS: ${LLM_FALLBACKS:-}
       LLM_SUMMARY_MODEL: ${LLM_SUMMARY_MODEL:-anthropic:claude-haiku-5-5}
@@ -72,16 +115,6 @@ services:
       CONTEXT_STRATEGY: ${CONTEXT_STRATEGY:-sliding_window}
       CONTEXT_MAX_INPUT_TOKENS: ${CONTEXT_MAX_INPUT_TOKENS:-60000}
       CONTEXT_KEEP_LAST_TURNS: ${CONTEXT_KEEP_LAST_TURNS:-10}
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-local:BAAI/bge-small-en-v1.5}
-      EMBEDDING_DIM: ${EMBEDDING_DIM:-384}
-      EMBEDDING_CACHE_DIR: /home/app/.cache/fastembed
-      RERANKER: ${RERANKER:-local}
-      RERANKER_MODEL: ${RERANKER_MODEL:-Xenova/ms-marco-MiniLM-L-6-v2}
-      RERANKER_API_URL: ${RERANKER_API_URL:-}
-      RERANKER_API_KEY: ${RERANKER_API_KEY:-}
-      RERANK_CANDIDATES: ${RERANK_CANDIDATES:-20}
-      RETRIEVAL_CANDIDATES: ${RETRIEVAL_CANDIDATES:-40}
-      RETRIEVAL_PAGE_SIZE: ${RETRIEVAL_PAGE_SIZE:-5}
       MEMORY_ENABLED: ${MEMORY_ENABLED:-false}
       TRACING_ENABLED: ${TRACING_ENABLED:-false}
       LANGFUSE_HOST: ${LANGFUSE_HOST:-https://cloud.langfuse.com}
@@ -89,11 +122,12 @@ services:
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
       RATE_LIMIT_REQUESTS_PER_MINUTE: ${RATE_LIMIT_REQUESTS_PER_MINUTE:-20}
       COST_CAP_USD_PER_USER_PER_DAY: ${COST_CAP_USD_PER_USER_PER_DAY:-2.00}
+      # Tools run on the mcp service; the backend signs each call with the user's identity.
+      TOOLS_TRANSPORT: mcp
+      MCP_SERVER_URL: http://mcp:8001/mcp
+      MCP_TOKEN_SECRET: ${MCP_TOKEN_SECRET:?Set MCP_TOKEN_SECRET in .env}
       AUTH_MODE: ${AUTH_MODE:-dev}
       AUTH_DEV_TOKENS: ${AUTH_DEV_TOKENS:-dev-token-alice:alice:employees|engineering,dev-token-bob:bob:employees|finance|leadership}
-    volumes:
-      # Embedding and reranker models download once, not on every container start.
-      - model_cache:/home/app/.cache/fastembed
     ports:
       - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
     depends_on:
@@ -101,6 +135,8 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      mcp:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
       interval: 5s
