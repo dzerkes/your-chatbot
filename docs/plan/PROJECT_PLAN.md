@@ -362,7 +362,7 @@ real tracing, before making any single layer good.
 
 ## Phase 3: Long conversations (M3)
 
-### [ ] C23 `feat(context): add tool-result compaction, running summary and prompt caching`
+### [x] C23 `feat(context): add tool-result compaction, running summary and prompt caching`
 
 - **Goal:** long sessions stay cheap, fast and accurate.
 - **Files:** `chatbot/src/chatbot/context/{compact_tools,summary,pipeline}.py`,
@@ -374,6 +374,17 @@ real tracing, before making any single layer good.
   Summaries happen in large, infrequent steps to keep the prefix stable.
 - **Done when:** a 60-turn scripted session stays under
   `CONTEXT_MAX_INPUT_TOKENS`, and traces show cached tokens on later turns.
+- **Verification:** the scripted test runs 60 turns with ~2.8 KB tool results
+  under a 6,000-token budget: every request fits, and each request starts with
+  the previous one except on the turns where a summary was written. A
+  sliding window alone shifts the prefix on every turn once full. A live
+  5-turn session on `gpt-6-luna` reported cached input of 0, 1,204, 2,588,
+  2,976 and 3,455 tokens per turn (89% of input by turn 5), and Langfuse
+  generations show the same cached counts.
+- **Also:** summaries also trigger at 80% of the token budget, because the
+  turn trigger alone let the budget guard drop a turn on every request, which
+  broke the cache each time. Token estimates now count tool results wrapped as
+  sent.
 
 ### [ ] C24 `feat(memory): add user memory tool behind a feature flag`
 

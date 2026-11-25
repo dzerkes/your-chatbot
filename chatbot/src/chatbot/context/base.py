@@ -11,10 +11,19 @@ from chatbot.types import Message, ToolResult, ToolUse
 
 
 @dataclass(frozen=True)
+class SessionSummary:
+    """A running summary of every stored message with sequence <= through_sequence."""
+
+    text: str
+    through_sequence: int
+
+
+@dataclass(frozen=True)
 class BuiltContext:
     system: str
     messages: list[Message]
     estimated_tokens: int
+    dropped_turns: int = 0  # stored turns removed only to fit the token budget
 
 
 class ContextBuilder(Protocol):
@@ -25,8 +34,12 @@ class ContextBuilder(Protocol):
         *,
         system: str,
         tools: Sequence[ToolDefinition] = (),
+        summary: SessionSummary | None = None,
     ) -> BuiltContext:
-        """Build provider input without modifying stored history or the current turn."""
+        """Build provider input without modifying stored history or the current turn.
+
+        Builders that do not summarize ignore ``summary``.
+        """
         ...
 
 
@@ -73,9 +86,13 @@ def bounded_context(
     messages: Sequence[Message],
     estimated_tokens: int,
     max_input_tokens: int,
+    dropped_turns: int = 0,
 ) -> BuiltContext:
     if estimated_tokens > max_input_tokens:
         raise ContextOverflow("Input context exceeds the configured token budget")
     return BuiltContext(
-        system, [message.model_copy(deep=True) for message in messages], estimated_tokens
+        system,
+        [message.model_copy(deep=True) for message in messages],
+        estimated_tokens,
+        dropped_turns,
     )

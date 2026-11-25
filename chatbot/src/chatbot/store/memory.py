@@ -60,12 +60,30 @@ class MemoryStore:
             updated = stored.model_copy(
                 update={
                     "title": session.title,
-                    "summary": session.summary,
                     "updated_at": datetime.now(UTC),
                 }
             )
             self._sessions[session.id] = updated
             return updated.model_copy(deep=True)
+
+    async def update_summary(
+        self, session_id: UUID, owner_id: UUID, summary: str, through_sequence: int
+    ) -> Session:
+        async with self._lock:
+            stored = self._sessions.get(session_id)
+            if stored is None or stored.owner_id != owner_id:
+                raise NotFoundError("Session not found")
+            covered = stored.summary_through_sequence
+            if covered is None or covered < through_sequence:
+                stored = stored.model_copy(
+                    update={
+                        "summary": summary,
+                        "summary_through_sequence": through_sequence,
+                        "summary_updated_at": datetime.now(UTC),
+                    }
+                )
+                self._sessions[session_id] = stored
+            return stored.model_copy(deep=True)
 
     async def save_turn(self, turn: Turn, messages: Sequence[Message], owner_id: UUID) -> None:
         validate_turn_messages(turn, messages)

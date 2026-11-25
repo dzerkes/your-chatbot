@@ -15,6 +15,7 @@ from pydantic import (
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 Port = Annotated[int, Field(ge=1, le=65535)]
+type ContextStage = Literal["full", "sliding_window", "compact_tools", "summary"]
 
 
 class Settings(BaseSettings):
@@ -58,11 +59,15 @@ class Settings(BaseSettings):
     llm_max_retries: NonNegativeInt = 2
     agent_max_steps: PositiveInt = 8
 
-    context_strategy: Literal["full", "sliding_window", "compact_tools", "summary"] = (
-        "sliding_window"
-    )
+    # Comma-separated pipeline, applied in this order: summary, compact_tools,
+    # sliding_window. "full" (no trimming) and "sliding_window" may stand alone.
+    context_strategy: Annotated[tuple[ContextStage, ...], NoDecode] = ("summary", "compact_tools")
     context_max_input_tokens: PositiveInt = 60000
-    context_keep_last_turns: PositiveInt = 10
+    context_keep_last_turns: PositiveInt = 10  # stored turns kept verbatim
+    # Summarize once this many turns beyond keep_last_turns are unsummarized, in one
+    # large step, so the cached prompt prefix changes rarely.
+    context_summary_trigger_turns: PositiveInt = 20
+    prompt_caching: bool = True
 
     # The vector column size is fixed by the rag migration from embedding_dim, so
     # changing the model to one with another dimension needs a schema change too.
@@ -101,6 +106,22 @@ class Settings(BaseSettings):
     auth_dev_tokens: SecretStr = SecretStr(
         "dev-token-alice:alice:employees|engineering,dev-token-bob:bob:employees|finance|leadership"
     )
+
+    @field_validator("context_strategy", mode="before")
+    @classmethod
+    def parse_context_strategy(cls, value: object) -> object:
+        if isinstance(value, str):
+            value = tuple(part.strip() for part in value.split(",") if part.strip())
+        return value
+
+    @field_validator("context_strategy")
+    @classmethod
+    def validate_context_strategy(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if not value or len(set(value)) != len(value):
+            raise ValueError("context_strategy needs one or more distinct stages")
+        if "full" in value and len(value) > 1:
+            raise ValueError("full keeps everything and cannot be combined with other stages")
+        return value
 
     @field_validator("llm_fallbacks", mode="before")
     @classmethod

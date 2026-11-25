@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from typing import Protocol
 
 from chatbot.llm.base import ToolDefinition
+from chatbot.safety import wrap_tool_results
 from chatbot.types import Message
 
 
@@ -28,12 +29,13 @@ class ApproximateTokenCounter:
     ) -> int:
         payload = {
             "system": system,
+            # Count tool results as sent: wrapped as untrusted data (chatbot.safety).
             "messages": [
                 {
                     "role": message.role,
                     "content": [block.model_dump(mode="json") for block in message.content],
                 }
-                for message in messages
+                for message in wrap_tool_results(messages)
             ],
             "tools": [tool.model_dump(mode="json") for tool in tools],
         }

@@ -306,3 +306,41 @@ def test_registry_rejects_invalid_or_unknown_provider(name: str) -> None:
 def test_openai_missing_key_fails_before_network() -> None:
     with pytest.raises(ProviderError, match="API key is not configured"):
         OpenAIProvider("gpt-5.5", Settings())
+
+
+def tool_for_cache() -> ToolDefinition:
+    return ToolDefinition(
+        name="query_projects",
+        description="Query projects",
+        input_schema={"type": "object", "properties": {"status": {"type": "string"}}},
+    )
+
+
+async def test_anthropic_marks_tools_system_and_conversation_as_cacheable() -> None:
+    llm, client = provider("anthropic", "anthropic_text_stream.json")
+    cached = request(tools=[tool_for_cache()]).model_copy(update={"cache_key": "session-1"})
+    _ = [event async for event in llm.stream(cached)]
+    call = client.messages.calls[0]
+    assert call["system"] == [
+        {"type": "text", "text": "Answer clearly.", "cache_control": {"type": "ephemeral"}}
+    ]
+    assert call["tools"][-1]["cache_control"] == {"type": "ephemeral"}
+    assert call["messages"][-1]["content"][-1]["cache_control"] == {"type": "ephemeral"}
+    assert sum("cache_control" in json.dumps(m) for m in call["messages"]) == 1  # one moving mark
+
+    llm, client = provider("anthropic", "anthropic_text_stream.json")
+    _ = [event async for event in llm.stream(request(tools=[tool_for_cache()]))]
+    plain = client.messages.calls[0]
+    assert plain["system"] == "Answer clearly."
+    assert "cache_control" not in json.dumps(plain["tools"]) + json.dumps(plain["messages"])
+
+
+async def test_openai_sends_the_prompt_cache_key_only_when_caching() -> None:
+    llm, client = provider("openai", "openai_text_stream.json")
+    _ = [e async for e in llm.stream(request().model_copy(update={"cache_key": "session-1"}))]
+    assert client.responses.calls[0]["prompt_cache_key"] == "session-1"
+    llm, client = provider("openai", "openai_text_stream.json")
+    _ = [e async for e in llm.stream(request())]
+    assert "prompt_cache_key" not in client.responses.calls[0] or not isinstance(
+        client.responses.calls[0]["prompt_cache_key"], str
+    )

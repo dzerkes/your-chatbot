@@ -2,7 +2,7 @@
 
 from collections.abc import Sequence
 
-from chatbot.context.base import BuiltContext, bounded_context, history_turns
+from chatbot.context.base import BuiltContext, SessionSummary, bounded_context, history_turns
 from chatbot.context.tokens import ApproximateTokenCounter, TokenCounter
 from chatbot.llm.base import ToolDefinition
 from chatbot.types import Message
@@ -29,6 +29,7 @@ class SlidingWindowContextBuilder:
         *,
         system: str,
         tools: Sequence[ToolDefinition] = (),
+        summary: SessionSummary | None = None,
     ) -> BuiltContext:
         turns = history_turns(history, current)[-self.keep_last_turns :]
         while True:

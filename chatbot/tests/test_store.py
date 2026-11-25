@@ -39,10 +39,21 @@ async def exercise_history(store: HistoryStore) -> None:
     assert await store.list_sessions(alice.id) == [session]
 
     renamed = await store.update_session(
-        session.model_copy(update={"title": "Active projects", "summary": "Found one project"})
+        session.model_copy(update={"title": "Active projects", "summary": "ignored"})
     )
     assert renamed.title == "Active projects"
-    assert renamed.summary == "Found one project"
+    assert renamed.summary is None  # summaries change only through update_summary
+    summarized = await store.update_summary(session.id, alice.id, "Found one project", 5)
+    assert (summarized.summary, summarized.summary_through_sequence) == ("Found one project", 5)
+    assert summarized.summary_updated_at is not None
+    # Coverage only moves forward: a stale summary from a concurrent turn is ignored.
+    stale = await store.update_summary(session.id, alice.id, "Older", 3)
+    assert (stale.summary, stale.summary_through_sequence) == ("Found one project", 5)
+    newer = await store.update_summary(session.id, alice.id, "Found two projects", 9)
+    assert (newer.summary, newer.summary_through_sequence) == ("Found two projects", 9)
+    assert (await store.get_session(session.id, alice.id)) == newer
+    with pytest.raises(NotFoundError):
+        await store.update_summary(session.id, bob.id, "Not yours", 20)
     assert renamed.updated_at >= session.updated_at
     with pytest.raises(NotFoundError):
         await store.update_session(renamed.model_copy(update={"owner_id": bob.id}))

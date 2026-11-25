@@ -9,9 +9,10 @@ from chatbot.agent import Agent
 from chatbot.config import Settings
 from chatbot.context import build_context_builder
 from chatbot.context.full import FullContextBuilder
+from chatbot.context.pipeline import PipelineContextBuilder
 from chatbot.context.sliding_window import SlidingWindowContextBuilder
 from chatbot.context.tokens import ApproximateTokenCounter
-from chatbot.errors import ChatbotError, ContextOverflow
+from chatbot.errors import ContextOverflow
 from chatbot.llm.base import LLMStop, LLMTextDelta, LLMToolCall, LLMUsage, ToolDefinition
 from chatbot.llm.fake import ScriptedProvider
 from chatbot.store.memory import MemoryStore
@@ -19,6 +20,7 @@ from chatbot.tools.base import Tool, ToolContext, ToolInput
 from chatbot.tools.pagination import ToolPage
 from chatbot.tools.registry import ToolRegistry
 from chatbot.types import Message, Text, ToolResult, ToolUse, TurnCompleted, TurnFailed, Usage, User
+from pydantic import ValidationError
 
 pytestmark = pytest.mark.unit
 
@@ -178,10 +180,17 @@ def test_settings_select_strategy_and_limits(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("CONTEXT_KEEP_LAST_TURNS", "2")
     window = build_context_builder(Settings())
     assert isinstance(window, SlidingWindowContextBuilder) and window.keep_last_turns == 2
-    for strategy in ("compact_tools", "summary"):
-        monkeypatch.setenv("CONTEXT_STRATEGY", strategy)
-        with pytest.raises(ChatbotError, match="not implemented"):
-            build_context_builder(Settings())
+    monkeypatch.setenv("CONTEXT_STRATEGY", "sliding_window, summary,compact_tools")
+    pipeline = build_context_builder(Settings())
+    assert isinstance(pipeline, PipelineContextBuilder)
+    assert pipeline.stages == ("summary", "compact_tools", "sliding_window")  # fixed order
+    for invalid in ("full,summary", "summary,summary", "unknown", ""):
+        monkeypatch.setenv("CONTEXT_STRATEGY", invalid)
+        if invalid == "":
+            assert Settings().context_strategy == ("summary", "compact_tools")  # blank = default
+            continue
+        with pytest.raises(ValidationError):
+            Settings()
 
 
 @pytest.mark.parametrize(
@@ -208,7 +217,7 @@ async def test_agent_uses_configured_context_and_keeps_all_stored_history(
         store,
         provider,
         ToolRegistry(),
-        Settings(context_strategy=strategy, context_keep_last_turns=1),
+        Settings(context_strategy=(strategy,), context_keep_last_turns=1),
         system="Rules",
     )
     for question in ("First", "Second", "Third"):

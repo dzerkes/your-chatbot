@@ -14,7 +14,8 @@ from anyio import CancelScope
 
 from chatbot.config import Settings
 from chatbot.context import build_context_builder
-from chatbot.context.base import ContextBuilder
+from chatbot.context.base import ContextBuilder, SessionSummary
+from chatbot.context.summary import PRESSURE_SHARE, Summarizer
 from chatbot.errors import (
     ChatbotError,
     ContextOverflow,
@@ -34,7 +35,7 @@ from chatbot.llm.base import (
 )
 from chatbot.logging import log_context
 from chatbot.safety import wrap_tool_results
-from chatbot.store.base import HistoryStore, Turn
+from chatbot.store.base import HistoryStore, Session, Turn
 from chatbot.tools.base import ToolContext
 from chatbot.tools.registry import ToolRegistry
 from chatbot.tracing import Tracing
@@ -63,6 +64,16 @@ class _EventIDs(TypedDict):
     trace_id: str | None
 
 
+def _add_usage(total: Usage, step: Usage) -> Usage:
+    return Usage(**{key: getattr(total, key) + value for key, value in step.model_dump().items()})
+
+
+def _stored_summary(session: Session) -> SessionSummary | None:
+    if session.summary is None or session.summary_through_sequence is None:
+        return None
+    return SessionSummary(session.summary, session.summary_through_sequence)
+
+
 class Agent:
     def __init__(
         self,
@@ -74,6 +85,7 @@ class Agent:
         system: str,
         context_builder: ContextBuilder | None = None,
         tracing: Tracing | None = None,
+        summarizer: Summarizer | None = None,
     ) -> None:
         self.store = store
         self.tracing = tracing if tracing is not None else Tracing()
@@ -84,6 +96,9 @@ class Agent:
         self.context_builder = (
             context_builder if context_builder is not None else build_context_builder(settings)
         )
+        self.summarizer = summarizer
+        if summarizer is not None:
+            summarizer.provider = self.tracing.wrap_provider(summarizer.provider)
         self._locks: WeakValueDictionary[UUID, asyncio.Lock] = WeakValueDictionary()
 
     async def respond(
@@ -113,6 +128,48 @@ class Agent:
                             )
                         yield event
 
+    async def _update_summary(
+        self,
+        turn: Turn,
+        user: User,
+        history: list[Message],
+        current: list[Message],
+        summary: SessionSummary | None,
+    ) -> tuple[SessionSummary | None, Usage]:
+        """Fold old turns into the session summary when due; never fail the turn for it."""
+        assert self.summarizer is not None
+        try:
+            try:
+                built = self.context_builder.build(
+                    history,
+                    current,
+                    system=self.system,
+                    tools=self.tools.definitions(),
+                    summary=summary,
+                )
+                limit = self.settings.context_max_input_tokens
+                pressure = (
+                    built.dropped_turns > 0 or built.estimated_tokens > PRESSURE_SHARE * limit
+                )
+            except ContextOverflow:
+                pressure = True
+            due = self.summarizer.due(history, current, summary, under_pressure=pressure)
+            if not due:
+                return summary, Usage()
+            updated, usage = await self.summarizer.summarize(summary, due)
+            saved = await self.store.update_summary(
+                turn.session_id, user.id, updated.text, updated.through_sequence
+            )
+            logger.info(
+                "Summarized %d turns through message %d", len(due), updated.through_sequence
+            )
+            return _stored_summary(saved), usage
+        except Exception:
+            logger.warning(
+                "Could not update the session summary; continuing without it", exc_info=True
+            )
+            return summary, Usage()
+
     async def _respond(self, turn: Turn, text: str, user: User) -> AsyncGenerator[Event, None]:
         started = monotonic()
         ids: _EventIDs = {
@@ -123,7 +180,8 @@ class Agent:
         try:
             if not text.strip():
                 raise ChatbotError("Message must not be blank")
-            if await self.store.get_session(turn.session_id, user.id) is None:
+            session = await self.store.get_session(turn.session_id, user.id)
+            if session is None:
                 raise NotFoundError("Session not found")
             history = await self.store.list_messages(turn.session_id, user.id)
         except ChatbotError as exc:
@@ -159,6 +217,12 @@ class Agent:
             messages.append(message)
 
         append("user", [Text(text=text)])
+        summary = _stored_summary(session)
+        if self.summarizer is not None:
+            summary, summary_usage = await self._update_summary(
+                turn, user, history, messages, summary
+            )
+            usage = _add_usage(usage, summary_usage)
         context = ToolContext(
             user=user, session_id=turn.session_id, turn_id=turn.id, trace_id=turn.trace_id
         )
@@ -176,7 +240,7 @@ class Agent:
                 stop: LLMStop | None = None
                 definitions = self.tools.definitions()
                 built = self.context_builder.build(
-                    history, messages, system=self.system, tools=definitions
+                    history, messages, system=self.system, tools=definitions, summary=summary
                 )
                 request = LLMRequest(
                     system=built.system,
@@ -185,6 +249,7 @@ class Agent:
                     tools=definitions,
                     max_output_tokens=self.settings.llm_max_output_tokens,
                     timeout_seconds=self.settings.llm_timeout_seconds,
+                    cache_key=str(turn.session_id) if self.settings.prompt_caching else None,
                 )
                 stream = self.provider.stream(request)
                 try:
@@ -208,12 +273,7 @@ class Agent:
                             if step_usage is not None:
                                 raise ProviderError("Provider sent duplicate usage")
                             step_usage = event.usage
-                            usage = Usage(
-                                **{
-                                    key: getattr(usage, key) + value
-                                    for key, value in event.usage.model_dump().items()
-                                }
-                            )
+                            usage = _add_usage(usage, event.usage)
                         elif isinstance(event, LLMStop):
                             stop = event
                 finally:
