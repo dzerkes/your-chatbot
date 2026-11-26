@@ -13,7 +13,8 @@ def test_example_env_is_supported(tmp_path: Path) -> None:
     (tmp_path / ".env").write_text((ROOT / ".env.example").read_text())
     settings = Settings()
     assert settings.postgres_user == "chatbot_owner"
-    assert settings.llm_fallbacks == ()
+    assert settings.llm_primary == "openai:gpt-6-luna"
+    assert settings.llm_fallbacks == ("openai:gpt-5.6-luna",)
     assert settings.embedding_dim == 384
     assert settings.embedding_model == "local:BAAI/bge-small-en-v1.5"
     assert settings.memory_enabled is False

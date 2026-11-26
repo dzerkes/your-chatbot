@@ -20,6 +20,17 @@ from chatbot.logging import configure_logging
 from chatbot.types import User
 from pydantic import ValidationError
 
+from evals.baseline import (
+    BASELINE,
+    QUALITY_SETTINGS,
+    baseline_from_run,
+    compare,
+    comparison_markdown,
+    comparison_text,
+    load_baseline,
+    quality_settings,
+    write_baseline,
+)
 from evals.dataset import DATASETS, Case, Dataset, load_dataset
 from evals.judge import Judge, needs_judge
 from evals.langfuse import send_scores
@@ -152,13 +163,46 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     )
     parser.add_argument("--no-langfuse", action="store_true", help="Do not send scores to Langfuse")
     parser.add_argument("--verbose", action="store_true", help="Show application logs")
+    parser.add_argument(
+        "--config-from",
+        type=Path,
+        help="Take model, context and retrieval settings from this env file (CI: .env.example); "
+        "database and keys still come from .env and the environment",
+    )
+    gate = parser.add_mutually_exclusive_group()
+    gate.add_argument(
+        "--baseline",
+        type=Path,
+        nargs="?",
+        const=BASELINE,
+        help=f"Compare with a baseline and exit 1 on regression (default {BASELINE.name})",
+    )
+    gate.add_argument(
+        "--write-baseline",
+        type=Path,
+        nargs="?",
+        const=BASELINE,
+        help="Save this run as the baseline, keeping the previous tolerances",
+    )
     return parser.parse_args(argv)
+
+
+def load_settings(config_from: Path | None) -> Settings:
+    settings = Settings()
+    if config_from is not None:
+        if not config_from.is_file():
+            raise SystemExit(f"No such settings file: {config_from}")
+        committed = Settings(_env_file=config_from)  # type: ignore[call-arg]
+        settings = settings.model_copy(
+            update={name: getattr(committed, name) for name in QUALITY_SETTINGS}
+        )
+    return settings
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
-        settings = Settings()
+        settings = load_settings(args.config_from)
         # Memory would carry facts from one case into the next for the same eval user.
         settings = settings.model_copy(
             update={
@@ -174,16 +218,39 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         print("\nEval run interrupted.", file=sys.stderr)
         return 130
-    json_path, md_path = write_reports(run, args.output or RESULTS / run.run_name)
+    directory = args.output or RESULTS / run.run_name
+    json_path, md_path = write_reports(run, directory)
     print(text_report(run))
     print(f"\nWrote {json_path} and {md_path}")
+    status = 0
+    current = quality_settings(settings)
+    if args.baseline is not None:
+        comparison = compare(run, load_baseline(args.baseline), current)
+        (directory / "comparison.md").write_text(comparison_markdown(comparison), encoding="utf-8")
+        print("\n" + comparison_text(comparison))
+        status = 1 if comparison.regressed else 0
+    elif args.write_baseline is not None:
+        broken = [
+            r.case_id
+            for r in run.results
+            if r.observation.status != "completed" or (r.judgement and r.judgement.error)
+        ]
+        if broken:
+            print(
+                f"Not writing a baseline: turns or judge calls failed for {', '.join(broken)}",
+                file=sys.stderr,
+            )
+            return 1
+        previous = load_baseline(args.write_baseline) if args.write_baseline.is_file() else None
+        write_baseline(baseline_from_run(run, current, previous), args.write_baseline)
+        print(f"Wrote baseline {args.write_baseline}")
     if settings.tracing_enabled and not args.no_langfuse:
         try:
             accepted = asyncio.run(send_scores(run, settings))
             print(f"Sent {accepted} scores to Langfuse (filter by eval_run={run.run_name})")
         except Exception as exc:
             print(f"Could not send scores to Langfuse: {exc}", file=sys.stderr)
-    return 0
+    return status
 
 
 if __name__ == "__main__":

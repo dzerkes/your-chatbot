@@ -483,7 +483,7 @@ real tracing, before making any single layer good.
   same cases with a prompt that skips tools failed tool choice, retrieval, facts
   and a refusal. Unit tests drive the runner with a scripted model, tool and judge.
 
-### [ ] C30 `ci(evals): run evals on prompt, tool and model changes`
+### [x] C30 `ci(evals): run evals on prompt, tool and model changes`
 
 - **Goal:** regressions are caught before merge.
 - **Files:** `.github/workflows/evals.yml`, `evals/baseline.json`.
@@ -491,6 +491,11 @@ real tracing, before making any single layer good.
   settings change. It fails if a score drops below the baseline by more than
   a set tolerance.
 - **Done when:** a deliberately worse prompt fails the pipeline.
+- **Verification:** the workflow's eval command passed against the baseline on unchanged
+  code. With the system prompt replaced by one that says never to admit a missing
+  answer, it exited 1: refusal fell from 1.00 to 0.50. Unit tests cover tolerances,
+  changed case counts, cost growth and baseline regeneration. The workflow has not
+  yet run on GitHub; it needs an `OPENAI_API_KEY` secret.
 
 ### [ ] C31 `docs: add runbook, debugging guide and Langfuse self-hosting notes`
 

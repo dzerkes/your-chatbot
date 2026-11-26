@@ -1,0 +1,127 @@
+name: Evals
+
+# Runs the eval set against real models when something that changes answers
+# changes, and fails when a score drops below evals/baseline.json by more than
+# its tolerance. It calls paid APIs, so it runs only for these paths.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "chatbot/src/chatbot/prompts/**"     # system and memory prompts
+      - "chatbot/src/chatbot/tools/**"       # tool definitions, descriptions, results
+      - "chatbot/src/chatbot/rag/**"         # retrieval, embeddings, reranking
+      - "chatbot/src/chatbot/context/**"     # context strategies and summaries
+      - "chatbot/src/chatbot/llm/**"         # provider adapters, gateway, prices
+      - "chatbot/src/chatbot/agent.py"
+      - "chatbot/src/chatbot/safety.py"      # tool-result wrapping
+      - "chatbot/src/chatbot/config.py"      # setting defaults
+      - ".env.example"                       # the model settings CI evaluates
+      - "db/seed/**"                         # demo data the cases ask about
+      - "db/migrations/**"
+      - "evals/**"
+      - "uv.lock"                            # SDK and model library versions
+      - ".github/workflows/evals.yml"
+  push:
+    branches: [main]
+    paths: # same list as pull_request
+      - "chatbot/src/chatbot/prompts/**"     # system and memory prompts
+      - "chatbot/src/chatbot/tools/**"       # tool definitions, descriptions, results
+      - "chatbot/src/chatbot/rag/**"         # retrieval, embeddings, reranking
+      - "chatbot/src/chatbot/context/**"     # context strategies and summaries
+      - "chatbot/src/chatbot/llm/**"         # provider adapters, gateway, prices
+      - "chatbot/src/chatbot/agent.py"
+      - "chatbot/src/chatbot/safety.py"      # tool-result wrapping
+      - "chatbot/src/chatbot/config.py"      # setting defaults
+      - ".env.example"                       # the model settings CI evaluates
+      - "db/seed/**"                         # demo data the cases ask about
+      - "db/migrations/**"
+      - "evals/**"
+      - "uv.lock"                            # SDK and model library versions
+      - ".github/workflows/evals.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evals-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: "0.13.7" # keep in step with ci.yml and the Dockerfiles
+  UV_PYTHON: "3.12"
+
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for model API keys
+        id: keys
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$OPENAI_API_KEY$ANTHROPIC_API_KEY" ]; then
+            echo "::warning::No model API key secret is available (for example on a fork), so evals were skipped."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: astral-sh/setup-uv@v6
+        if: steps.keys.outputs.ready == 'true'
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - if: steps.keys.outputs.ready == 'true'
+        run: uv sync --locked
+
+      - name: Use the committed settings (placeholder database secrets)
+        if: steps.keys.outputs.ready == 'true'
+        run: cp .env.example .env
+      - name: Cache the local embedding and reranking models
+        if: steps.keys.outputs.ready == 'true'
+        uses: actions/cache@v4
+        with:
+          path: .cache/fastembed
+          key: fastembed-${{ hashFiles('.env.example') }}
+
+      - name: Start Postgres, migrate, seed and ingest the demo data
+        if: steps.keys.outputs.ready == 'true'
+        run: make seed ingest
+
+      - name: Run evals and compare with the baseline
+        if: steps.keys.outputs.ready == 'true'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: >-
+          uv run python -m evals.runner
+          --config-from .env.example
+          --baseline evals/baseline.json
+          --output evals/results/ci
+          --no-langfuse
+
+      - name: Write the job summary
+        if: always() && steps.keys.outputs.ready == 'true'
+        run: |
+          for file in evals/results/ci/comparison.md evals/results/ci/report.md; do
+            if [ -f "$file" ]; then cat "$file" >> "$GITHUB_STEP_SUMMARY"; echo >> "$GITHUB_STEP_SUMMARY"; fi
+          done
+      - name: Upload eval results
+        if: always() && steps.keys.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results
+          path: evals/results/ci
+          if-no-files-found: ignore
+
+      - name: Show Compose logs on failure
+        if: failure() && steps.keys.outputs.ready == 'true'
+        run: docker compose logs --no-color
+      - name: Stop Compose
+        if: always() && steps.keys.outputs.ready == 'true'
+        run: docker compose down -v

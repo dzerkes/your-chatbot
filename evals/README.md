@@ -30,6 +30,47 @@ plus `eval.latency_seconds`. Each score's metadata holds `eval_run`, `dataset`
 and `case`. Score IDs are derived from the run, case and scorer, so a resend
 updates scores instead of duplicating them. `--no-langfuse` skips sending.
 
+## Baseline and CI
+
+[baseline.json](baseline.json) holds each scorer's mean and case count from a
+reference run, with the tolerance it may drop by, plus the mean cost per case
+and the settings that produced it. Compare a run with it, or replace it:
+
+```bash
+uv run python -m evals.runner --config-from .env.example --baseline        # exit 1 on regression
+uv run python -m evals.runner --config-from .env.example --write-baseline  # after an intended change
+```
+
+`--config-from .env.example` takes the model, context and retrieval settings
+from the committed file, which is what CI evaluates, while the database and API
+keys still come from your `.env`. A check regresses when:
+
+- a scorer's mean drops below the baseline mean minus its tolerance. The
+  defaults are 0.1, or 0 for `refusal` and `injection`, because one leak or
+  followed injection should block a merge.
+- a scorer has a different number of cases. The dataset changed, so regenerate
+  the baseline in the same change.
+- the mean cost per case more than doubles (`cost_tolerance` 1.0).
+
+Latency is reported but not gated, because shared runners make it noisy. The
+per-case budget still bounds it. The comparison also lists settings that differ
+from the baseline run, such as a new `LLM_PRIMARY`. `--write-baseline` refuses
+a run in which a turn or judge call failed. It keeps tolerances you edited by
+hand.
+
+The [Evals workflow](../.github/workflows/evals.yml) runs on pull requests and
+pushes to `main` that touch prompts, tools, retrieval, context, LLM adapters,
+`config.py`, `.env.example`, the demo data, `evals/` or `uv.lock`. It can also
+be started by hand. It seeds and ingests the demo data, runs the evals with
+`--config-from .env.example --baseline` and fails on regression. The comparison
+and report go to the job summary, and the results are uploaded as the
+`eval-results` artifact. It needs an `OPENAI_API_KEY` repository secret, or
+`ANTHROPIC_API_KEY` if `.env.example` uses Anthropic models. Without a key (for
+example on a fork) the job skips with a warning. Tracing is off in CI.
+
+When a change lowers scores on purpose, or improves them, regenerate the
+baseline and commit it with the change, so the review shows the new numbers.
+
 ## Datasets
 
 `datasets/*.yaml` define users (with their groups) and cases. The header of

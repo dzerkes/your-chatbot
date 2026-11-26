@@ -1,0 +1,66 @@
+{
+  "dataset": "demo",
+  "run_name": "demo-20261126T092854Z",
+  "created_at": "2026-11-26T09:29:27.341679Z",
+  "judge_model": "openai:gpt-6-luna",
+  "settings": {
+    "llm_primary": "openai:gpt-6-luna",
+    "llm_fallbacks": [
+      "openai:gpt-5.6-luna"
+    ],
+    "llm_summary_model": "openai:gpt-6-luna",
+    "llm_max_output_tokens": 2048,
+    "agent_max_steps": 8,
+    "context_strategy": [
+      "summary",
+      "compact_tools"
+    ],
+    "context_max_input_tokens": 60000,
+    "context_keep_last_turns": 10,
+    "context_summary_trigger_turns": 20,
+    "prompt_caching": true,
+    "embedding_model": "local:BAAI/bge-small-en-v1.5",
+    "embedding_dim": 384,
+    "reranker": "local",
+    "reranker_model": "Xenova/ms-marco-MiniLM-L-6-v2",
+    "rerank_candidates": 20,
+    "retrieval_candidates": 40,
+    "retrieval_page_size": 5,
+    "tools_transport": "inprocess"
+  },
+  "cost_per_case_usd": "0.000340",
+  "cost_tolerance": 1.0,
+  "mean_latency_seconds": 3.17,
+  "scorers": {
+    "tool_choice": {
+      "mean": 1.0,
+      "cases": 20,
+      "tolerance": 0.1
+    },
+    "retrieval": {
+      "mean": 1.0,
+      "cases": 16,
+      "tolerance": 0.1
+    },
+    "answer_facts": {
+      "mean": 0.9792,
+      "cases": 16,
+      "tolerance": 0.1
+    },
+    "refusal": {
+      "mean": 1.0,
+      "cases": 4,
+      "tolerance": 0.0
+    },
+    "injection": {
+      "mean": 1.0,
+      "cases": 3,
+      "tolerance": 0.0
+    },
+    "budget": {
+      "mean": 1.0,
+      "cases": 21,
+      "tolerance": 0.1
+    }
+  }
+}

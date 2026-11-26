@@ -18,7 +18,7 @@ dependencies = [
 dev-mode-dirs = [".."]
 
 [tool.hatch.build.targets.wheel]
-only-include = ["__init__.py", "dataset.py", "judge.py", "langfuse.py", "observe.py", "report.py", "runner.py", "scorers", "datasets"]
+only-include = ["__init__.py", "baseline.py", "dataset.py", "judge.py", "langfuse.py", "observe.py", "report.py", "runner.py", "scorers", "datasets"]
 sources = {"" = "evals"}
 
 [tool.uv]
