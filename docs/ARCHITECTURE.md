@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes what the system looks like when the plan is finished
+This document describes what the system looks like now that the plan is finished
 and why each choice was made. The order of work is in
 [plan/PROJECT_PLAN.md](plan/PROJECT_PLAN.md).
 

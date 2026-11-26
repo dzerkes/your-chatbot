@@ -3,7 +3,7 @@
 The database roles and pgvector extension are initialized by `db/init/01_roles.sql`
 when Postgres starts with an empty volume. Alembic handles versioned application
 schema changes. The migration files live in `db/migrations/` so both the chatbot
-package and future backend can use the same schema.
+package and the backend use the same schema.
 
 Start Postgres, then run the one-shot migration service:
 

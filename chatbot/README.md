@@ -1,7 +1,7 @@
 # Chatbot core
 
-This package holds the application code shared by the CLI, backend and future
-eval runner. It has no FastAPI or Streamlit dependency. The store module uses
+This package holds the application code shared by the CLI, backend and eval
+runner. It has no FastAPI or Streamlit dependency. The store module uses
 psycopg for Postgres history persistence; the Anthropic and OpenAI adapters use
 their SDKs.
 `build_chatbot(settings)` assembles the agent, history store, provider and tools.
@@ -60,7 +60,8 @@ replaces the previous handler instead of adding duplicate output.
 
 Use `model_dump_json()` / `model_validate_json()` to round-trip models. For the
 `Event` union, use `pydantic.TypeAdapter(Event)` to serialize and validate it.
-This shape will become the persistence and streaming contract in later commits.
+This shape is the persistence and streaming contract: the store saves these
+messages and the backend streams these events.
 
 `chatbot.errors` provides `ChatbotError` and the specific `ProviderError`,
 `ToolError`, `ContextOverflow` and `StepLimitExceeded` exceptions. Each has a
@@ -329,8 +330,16 @@ For unit tests, construct `Agent` with `MemoryStore`, `ScriptedProvider` and a
 |---|---|
 | `full` | All stored turns, plus the entire current turn. Overflow fails instead of trimming. |
 | `sliding_window` | Up to `CONTEXT_KEEP_LAST_TURNS` recent stored turns, plus the entire current turn. Oldest stored turns are removed further if needed to fit the budget. |
+| `compact_tools` | Replaces tool results in every earlier turn with a one-line note; the current turn keeps full results. |
+| `summary` | Folds older turns into a running summary stored on the session, made by `LLM_SUMMARY_MODEL`, and sends it before the recent turns. |
 
-The default is `sliding_window` with 10 stored turns. A turn includes its user
+`compact_tools`, `summary` and `sliding_window` combine as comma-separated
+stages, for example `CONTEXT_STRATEGY=summary,compact_tools` (the default).
+`full` and `sliding_window` alone use their own builders; any other combination
+runs through `chatbot.context.pipeline`, whose module docstring and
+[ARCHITECTURE.md](../docs/ARCHITECTURE.md#36-history-and-context) explain the
+order and how it keeps prompt caching effective. `CONTEXT_KEEP_LAST_TURNS`
+(default 10) sets how many recent turns stay verbatim. A turn includes its user
 message, every assistant/tool exchange, and its answer. The current turn remains
 intact across all agent steps. Builders reject incomplete tool exchanges and
 never retain a tool result without its call. They return copies of selected
@@ -350,9 +359,6 @@ is separate from `LLM_MAX_OUTPUT_TOKENS`; actual usage still comes from the prov
 Custom callers can pass a counter to `build_context_builder(settings, counter=...)`
 or pass a `context_builder` to `Agent`. `BuiltContext` exposes the selected
 messages, system prompt and estimated token count.
-
-The settings names `compact_tools` and `summary` are reserved for later commits;
-selecting either currently reports that the strategy is not implemented.
 
 ## Tracing to Langfuse
 

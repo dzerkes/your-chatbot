@@ -4,24 +4,25 @@ A proof of concept for a chatbot that answers questions from company data. It is
 built as a complete, small system: a chat UI, a thin API, an agent loop with
 tools, Postgres for history and memory, and tracing plus evals around all of it.
 
-> **Status:** Postgres with pgvector and Alembic migrations run locally. The
-> `chatbot` package provides settings, domain types, session/message stores,
-> Anthropic/OpenAI LLM adapters, and a terminal agent that queries synthetic
-> project data and saves conversations, with configurable full or recent-turn
-> model context and OpenTelemetry tracing to Langfuse. FastAPI and Streamlit
-> provide authenticated sessions, streamed chat and conversation resume (C15).
-> The build order is in
-> [docs/plan/PROJECT_PLAN.md](docs/plan/PROJECT_PLAN.md) and progress is tracked
-> in [CHANGELOG.md](CHANGELOG.md).
+> **Status:** all planned commits (C01 to C31) are done. The system runs end to
+> end on synthetic data with `docker compose up`. To run and debug it, start with
+> the [runbook](docs/RUNBOOK.md). The build order is in
+> [docs/plan/PROJECT_PLAN.md](docs/plan/PROJECT_PLAN.md) and every change is in
+> [CHANGELOG.md](CHANGELOG.md).
 
-## What it will do
+## What it does
 
-- Chat over company data through read-only tools: `search_docs` (hybrid RAG)
-  and `query_projects` (curated SQL views).
-- Keep every session, message, tool call and tool result in Postgres.
-- Trace every turn (session → turn → LLM call or tool call) with tokens,
-  latency and cost, and send it to Langfuse.
-- Run an eval set on every prompt, tool or model change.
+- Chats over company data through read-only tools: `search_docs` (hybrid RAG
+  with group-based access) and `query_projects` (curated SQL views), served
+  over MCP.
+- Keeps every session, message, tool call and tool result in Postgres, with an
+  append-only audit log, per-user rate limits and cost caps.
+- Manages long conversations with summaries and compacted tool results, and
+  can remember facts across sessions (off by default).
+- Traces every turn (session → turn → LLM call or tool call) with tokens,
+  latency and cost, and sends it and the users' thumbs up/down to Langfuse.
+- Runs an eval set on every prompt, tool or model change and fails CI on a
+  regression.
 
 ## How the parts fit
 
@@ -37,11 +38,12 @@ tools, Postgres for history and memory, and tracing plus evals around all of it.
 More detail, including the reasoning behind each choice, is in
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-## Planned layout
+## Layout
 
 ```
 your-chatbot/
-├── docker-compose.yml        # postgres, migrate, backend, frontend
+├── docker-compose.yml        # postgres, migrate, mcp, backend, frontend
+├── docker-compose.langfuse.yml  # optional self-hosted Langfuse
 ├── pyproject.toml            # uv workspace root + shared tooling
 ├── .env.example              # every setting, documented
 ├── db/                       # migrations, role setup, demo data
@@ -51,8 +53,11 @@ your-chatbot/
 ├── backend/                  # FastAPI, imports `chatbot`
 ├── frontend/                 # Streamlit, calls the backend
 ├── mcp_servers/              # tools over MCP
-├── evals/                    # datasets, runner, scorers
+├── evals/                    # datasets, runner, scorers, baseline.json
+├── .github/workflows/        # ci.yml (lint, types, tests), evals.yml (quality gate)
 └── docs/
+    ├── RUNBOOK.md
+    ├── DEBUGGING.md
     ├── ARCHITECTURE.md
     ├── plan/PROJECT_PLAN.md
     └── init_prompt/          # the original project brief
@@ -135,7 +140,7 @@ The async `PostgresStore` uses the application role for history reads and
 writes. `MemoryStore` follows the same interface for unit tests. See
 [chatbot/README.md](chatbot/README.md) for the store and LLM provider contracts.
 
-From milestone M1 onward (commit C16 in the plan):
+To run the whole stack in containers:
 
 ```bash
 docker compose up        # UI on http://localhost:8501, API on http://localhost:8000

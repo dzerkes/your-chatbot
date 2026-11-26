@@ -14,11 +14,11 @@ All important changes to this project are recorded here, newest first.
 
 | Plan id | Commit | Type | Change |
 |---|---|---|---|
-| C31 | Pending | Added | `docs/RUNBOOK.md`: from clone to a first answer, services and health checks, common operations, a table of failure codes and fixes, tracing setup, evals, and how to add a provider, a tool or a context strategy. |
-| C31 | Pending | Added | `docs/DEBUGGING.md`: follow one bad answer from the UI, a thumbs down or a user's report to its turn, stored messages, audit rows, retrieved chunks, logs and trace, then replay it and keep it fixed with an eval case. |
-| C31 | Pending | Added | `python -m chatbot.cli replay --session ID [--until TURN]` asks a saved session's questions again in a new session with the current code and settings, printing each original answer next to the new one. The CLI also prints each turn's trace ID. |
-| C31 | Pending | Added | `docker-compose.langfuse.yml`: self-hosted Langfuse as an overlay on the main Compose file, initialized with the project keys from `.env`. Setup is in the runbook. |
-| C31 | Pending | Fixed | `LOG_LEVEL=DEBUG` now logs each model request verbatim, as `.env.example` and the architecture document already said. |
+| C31 | `13b056f` | Added | `docs/RUNBOOK.md`: from clone to a first answer, services and health checks, common operations, a table of failure codes and fixes, tracing setup, evals, and how to add a provider, a tool or a context strategy. |
+| C31 | `13b056f` | Added | `docs/DEBUGGING.md`: follow one bad answer from the UI, a thumbs down or a user's report to its turn, stored messages, audit rows, retrieved chunks, logs and trace, then replay it and keep it fixed with an eval case. |
+| C31 | `13b056f` | Added | `python -m chatbot.cli replay --session ID [--until TURN]` asks a saved session's questions again in a new session with the current code and settings, printing each original answer next to the new one. The CLI also prints each turn's trace ID. |
+| C31 | `13b056f` | Added | `docker-compose.langfuse.yml`: self-hosted Langfuse as an overlay on the main Compose file, initialized with the project keys from `.env`. Setup is in the runbook. |
+| C31 | `13b056f` | Fixed | `LOG_LEVEL=DEBUG` now logs each model request verbatim, as `.env.example` and the architecture document already said. |
 
 ### 2026-11-26
 
