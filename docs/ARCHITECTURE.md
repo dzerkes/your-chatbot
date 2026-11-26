@@ -286,4 +286,7 @@ own sake.
 - A scripted fake provider makes agent tests deterministic and free.
 - Typed errors (`ToolError`, `ProviderError`, `ContextOverflow`, ...) instead
   of bare exceptions, each recorded on the span where it happened.
-- A session can be replayed from the database against any provider or prompt.
+- A session can be replayed from the database against any provider or prompt
+  (`python -m chatbot.cli replay`).
+- [DEBUGGING.md](DEBUGGING.md) follows one bad answer through all of these, and
+  [RUNBOOK.md](RUNBOOK.md) covers operation and Langfuse self-hosting.

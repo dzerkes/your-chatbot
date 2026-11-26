@@ -269,7 +269,7 @@ class Agent:
                 summary = await self._update_summary(
                     turn, user, history, messages, summary, system, record_usage
                 )
-            for _step in range(self.settings.agent_max_steps):
+            for step in range(self.settings.agent_max_steps):
                 pending = []
                 step_usage = None
                 served = self.provider.name  # the gateway reports a fallback model
@@ -287,6 +287,15 @@ class Agent:
                     timeout_seconds=self.settings.llm_timeout_seconds,
                     cache_key=str(turn.session_id) if self.settings.prompt_caching else None,
                 )
+                if logger.isEnabledFor(logging.DEBUG):
+                    # Verbatim, including user text and tool results: local debugging only.
+                    logger.debug(
+                        "Model request, step %d, about %d input tokens, %d turns dropped: %s",
+                        step + 1,
+                        built.estimated_tokens,
+                        built.dropped_turns,
+                        request.model_dump_json(),
+                    )
                 async with provider_stream(self.provider, request) as stream:
                     async for event in stream:
                         if stop is not None:

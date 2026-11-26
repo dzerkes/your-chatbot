@@ -84,7 +84,9 @@ uv run python -m chatbot.cli chat --user alice --groups employees,engineering \
     --prompt "How many vacation days do I get?"   # groups decide which documents it can search
 ```
 
-Use `--session SESSION_UUID` with the same user to resume a conversation.
+Use `--session SESSION_UUID` with the same user to resume a conversation, and
+`chatbot.cli replay --session SESSION_UUID` to ask its questions again with the
+current code and settings ([debugging guide](docs/DEBUGGING.md)).
 Interactive chat exits with `/quit` or `/exit`. See [chatbot/README.md](chatbot/README.md)
 for the streaming `respond()` interface and lifecycle.
 
@@ -179,6 +181,8 @@ See [chatbot/README.md](chatbot/README.md) for the core types and logging API.
 
 ## Documentation
 
+- [Runbook: run, operate, extend, self-host Langfuse](docs/RUNBOOK.md)
+- [Debugging a turn: from a bad answer to its trace, messages and audit rows](docs/DEBUGGING.md)
 - [Architecture and design decisions](docs/ARCHITECTURE.md)
 - [Commit-by-commit project plan](docs/plan/PROJECT_PLAN.md)
 - [Changelog](CHANGELOG.md)
