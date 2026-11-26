@@ -189,6 +189,7 @@ See [chatbot/README.md](chatbot/README.md) for the core types and logging API.
 - [Runbook: run, operate, extend, self-host Langfuse](docs/RUNBOOK.md)
 - [Debugging a turn: from a bad answer to its trace, messages and audit rows](docs/DEBUGGING.md)
 - [Architecture and design decisions](docs/ARCHITECTURE.md)
+- [Future work: what would make it more complete](docs/FUTURE_WORK.md)
 - [Commit-by-commit project plan](docs/plan/PROJECT_PLAN.md)
 - [Changelog](CHANGELOG.md)
 - [Original project brief](docs/init_prompt/INIT_PROMPT.txt)
