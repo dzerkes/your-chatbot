@@ -13,6 +13,7 @@ from weakref import WeakValueDictionary
 
 from anyio import CancelScope
 
+from chatbot.audit import AuditLog
 from chatbot.config import Settings
 from chatbot.context import build_context_builder
 from chatbot.context.base import ContextBuilder, SessionSummary
@@ -92,6 +93,7 @@ class Agent:
         tracing: Tracing | None = None,
         summarizer: Summarizer | None = None,
         memories: UserMemoryStore | None = None,
+        audit: AuditLog | None = None,
     ) -> None:
         self.store = store
         self.tracing = tracing if tracing is not None else Tracing()
@@ -103,6 +105,7 @@ class Agent:
             context_builder if context_builder is not None else build_context_builder(settings)
         )
         self.summarizer = summarizer
+        self.audit = audit
         self.memories = memories
         if summarizer is not None:
             summarizer.provider = self.tracing.wrap_provider(summarizer.provider)
@@ -259,6 +262,8 @@ class Agent:
         }
         failure: ChatbotError | None = None
         try:
+            if self.audit is not None:
+                await self.audit.turn(context, text)
             system = self.system + await self._memory_context(user)
             if self.summarizer is not None:
                 summary = await self._update_summary(
@@ -332,18 +337,7 @@ class Agent:
                     break
                 for call in calls:
                     yield ToolCallStarted(**ids, tool_use=call)
-                    try:
-                        result = await self.tracing.execute_tool(self.tools, call, context)
-                    except ToolError as exc:
-                        result = ToolResult(
-                            tool_use_id=call.id,
-                            is_error=True,
-                            content={
-                                "error": str(exc),
-                                "code": exc.code,
-                                "retryable": exc.retryable,
-                            },
-                        )
+                    result = await self._execute_tool(call, context)
                     append("tool", [result])
                     yield ToolCallFinished(**ids, tool_result=result)
             else:
@@ -380,6 +374,28 @@ class Agent:
             )
         else:
             yield TurnCompleted(**ids, usage=usage, cost_usd=turn.cost_usd)
+
+    async def _execute_tool(self, call: ToolUse, context: ToolContext) -> ToolResult:
+        result: ToolResult | None = None
+        outcome: Literal["returned", "failed", "interrupted"] = "failed"
+        try:
+            result = await self.tracing.execute_tool(self.tools, call, context)
+            if not result.is_error:
+                outcome = "returned"
+        except ToolError as exc:
+            result = ToolResult(
+                tool_use_id=call.id,
+                is_error=True,
+                content={"error": str(exc), "code": exc.code, "retryable": exc.retryable},
+            )
+        except (asyncio.CancelledError, GeneratorExit):
+            outcome = "interrupted"
+            raise
+        finally:
+            if self.audit is not None:
+                with CancelScope(shield=True):
+                    await self.audit.tool(context, call, result, outcome)
+        return result
 
     def _finish_messages(
         self,

@@ -5,6 +5,7 @@ from contextlib import AsyncExitStack, asynccontextmanager
 from importlib.resources import files
 
 from chatbot.agent import Agent
+from chatbot.audit import AuditLog
 from chatbot.config import Settings
 from chatbot.context import build_context_builder
 from chatbot.context.summary import Summarizer
@@ -59,4 +60,5 @@ async def build_chatbot(settings: Settings) -> AsyncIterator[Agent]:
             tracing=tracing,
             summarizer=summarizer,
             memories=memories,
+            audit=AuditLog(store.pool),
         )

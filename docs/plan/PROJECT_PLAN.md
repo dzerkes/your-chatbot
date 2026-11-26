@@ -437,7 +437,7 @@ real tracing, before making any single layer good.
   API tests cover user isolation and rejection before generation. A Streamlit test
   checks the spending-limit message survives the conversation reload.
 
-### [ ] C27 `feat(audit): add append-only audit log`
+### [x] C27 `feat(audit): add append-only audit log`
 
 - **Goal:** a compliance record that does not depend on Langfuse.
 - **Files:** migration for `audit_log`, `chatbot/src/chatbot/audit.py`.
@@ -446,6 +446,9 @@ real tracing, before making any single layer good.
   `chatbot_app` can insert only; a trigger rejects update and delete.
 - **Done when:** tests show inserts succeed and update or delete fails for
   every application role.
+- **Verification:** CLI integration tests read back the question, tool arguments and
+  returned project ID with tracing enabled and disabled. Postgres tests exercise
+  the application and reader grants and the owner-side mutation trigger.
 
 ### [ ] C28 `feat(feedback): add thumbs up/down linked to traces`
 

@@ -124,3 +124,18 @@ docker compose run --rm migrate alembic -c db/alembic.ini downgrade base
 Downgrading to `base` deletes company data as well as all users, sessions, turns
 and messages. Integration tests use temporary databases for migrations, seed
 idempotency, tool queries and permission checks, then delete those databases.
+
+
+## Audit records
+
+The CLI and backend append an `audit_log` row before the first model call of
+each admitted turn, and another when each tool execution ends. The rows share
+user, session, turn and trace IDs. Document searches record the returned paths
+and chunk IDs. Project and memory calls record the returned row IDs. Questions
+and tool arguments are stored verbatim and may contain sensitive information.
+
+The database assigns timestamps. The application role can insert event data
+and the read-only tool role has no access. The owner can inspect a turn with
+`SELECT * FROM audit_log WHERE turn_id = $1 ORDER BY id`. A trigger rejects
+updates, deletes and truncation, including ordinary owner-issued statements.
+Audit IDs have no cascading references to mutable history tables.

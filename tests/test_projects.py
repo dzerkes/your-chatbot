@@ -333,6 +333,27 @@ async def test_cli_demo_query_and_session_resume(
         turn = (await store.list_turns(session.id, user.id))[0]
         assert turn.status == "completed" and turn.input_tokens == 30 and turn.output_tokens == 10
         assert turn.cost_usd == Decimal("0.000160")
+        async with await psycopg.AsyncConnection.connect(conninfo(settings)) as owner:
+            audit = await owner.execute(
+                """SELECT event_type, question, tool_name, call_id, arguments, sources, outcome
+                   FROM audit_log WHERE user_id=%s AND session_id=%s AND turn_id=%s AND trace_id=%s
+                   ORDER BY id""",
+                (user.id, session.id, turn.id, turn.trace_id),
+            )
+            items = result.content["items"]
+            assert isinstance(items, list) and isinstance(items[0], dict)
+            assert await audit.fetchall() == [
+                ("turn", args.prompt, None, None, None, [], None),
+                (
+                    "tool",
+                    None,
+                    "query_projects",
+                    "projects-cli",
+                    {"status": "active", "client": "Northstar"},
+                    [{"source": "curated.projects", "id": items[0]["id"]}],
+                    "returned",
+                ),
+            ]
         if enable_tracing:
             spans = exporters[0].get_finished_spans()
             assert len(spans) == 5
@@ -417,3 +438,32 @@ async def test_backend_project_chat_and_owner_scoping(
         result = detail["messages"][2]["content"][0]
         assert not result["is_error"] and result["content"]["items"][0]["name"] == "Research Portal"
         assert (await client.get(f"/sessions/{session_id}", headers=bob)).status_code == 404
+
+
+def test_audit_privileges_and_mutation_trigger(project_database: Settings) -> None:
+    settings = project_database
+    app = make_conninfo(
+        conninfo(settings),
+        user=settings.app_db_user,
+        password=settings.app_db_password.get_secret_value(),
+    )
+    insert = """INSERT INTO audit_log (event_type, user_id, session_id, turn_id, question)
+                VALUES ('turn', gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 'Hello')"""
+    mutations = (
+        "UPDATE audit_log SET question='changed'",
+        "DELETE FROM audit_log",
+        "TRUNCATE audit_log",
+    )
+    with psycopg.connect(app, autocommit=True) as conn:
+        conn.execute(insert)
+        for statement in ("SELECT * FROM audit_log", *mutations):
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                conn.execute(statement)
+    with psycopg.connect(conninfo(settings, reader=True), autocommit=True) as conn:
+        for statement in (insert, "SELECT * FROM audit_log", *mutations):
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                conn.execute(statement)
+    with psycopg.connect(conninfo(settings), autocommit=True) as conn:
+        for statement in mutations:
+            with pytest.raises(psycopg.errors.RaiseException, match="append-only"):
+                conn.execute(statement)
