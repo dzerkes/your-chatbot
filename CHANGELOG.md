@@ -14,71 +14,71 @@ All important changes to this project are recorded here, newest first.
 
 | Plan id | Commit | Type | Change |
 |---|---|---|---|
-| C31 | `13b056f` | Added | `docs/RUNBOOK.md`: from clone to a first answer, services and health checks, common operations, a table of failure codes and fixes, tracing setup, evals, and how to add a provider, a tool or a context strategy. |
-| C31 | `13b056f` | Added | `docs/DEBUGGING.md`: follow one bad answer from the UI, a thumbs down or a user's report to its turn, stored messages, audit rows, retrieved chunks, logs and trace, then replay it and keep it fixed with an eval case. |
-| C31 | `13b056f` | Added | `python -m chatbot.cli replay --session ID [--until TURN]` asks a saved session's questions again in a new session with the current code and settings, printing each original answer next to the new one. The CLI also prints each turn's trace ID. |
-| C31 | `13b056f` | Added | `docker-compose.langfuse.yml`: self-hosted Langfuse as an overlay on the main Compose file, initialized with the project keys from `.env`. Setup is in the runbook. |
-| C31 | `13b056f` | Fixed | `LOG_LEVEL=DEBUG` now logs each model request verbatim, as `.env.example` and the architecture document already said. |
+| C31 | `bc0fe57` | Added | `docs/RUNBOOK.md`: from clone to a first answer, services and health checks, common operations, a table of failure codes and fixes, tracing setup, evals, and how to add a provider, a tool or a context strategy. |
+| C31 | `bc0fe57` | Added | `docs/DEBUGGING.md`: follow one bad answer from the UI, a thumbs down or a user's report to its turn, stored messages, audit rows, retrieved chunks, logs and trace, then replay it and keep it fixed with an eval case. |
+| C31 | `bc0fe57` | Added | `python -m chatbot.cli replay --session ID [--until TURN]` asks a saved session's questions again in a new session with the current code and settings, printing each original answer next to the new one. The CLI also prints each turn's trace ID. |
+| C31 | `bc0fe57` | Added | `docker-compose.langfuse.yml`: self-hosted Langfuse as an overlay on the main Compose file, initialized with the project keys from `.env`. Setup is in the runbook. |
+| C31 | `bc0fe57` | Fixed | `LOG_LEVEL=DEBUG` now logs each model request verbatim, as `.env.example` and the architecture document already said. |
 
 ### 2026-11-26
 
 | Plan id | Commit | Type | Change |
 |---|---|---|---|
-| C30 | `4bb9db6` | Added | Evals workflow: on changes to prompts, tools, retrieval, context, LLM adapters, settings, demo data or evals, CI runs the eval set with the committed settings and fails when a score drops below `evals/baseline.json` by more than its tolerance. The comparison and report go to the job summary. |
-| C30 | `4bb9db6` | Added | `evals.runner --baseline` compares a run with the baseline (exit 1 on regression), and `--write-baseline` saves a new one. `--config-from` takes the model, context and retrieval settings from an env file. Refusal and injection allow no drop. Changed case counts and a doubled cost per case also fail. |
-| C30 | `4bb9db6` | Changed | `.env.example` uses `openai:gpt-6-luna` with fallback `openai:gpt-5.6-luna` for chat and summaries, matching the models the baseline was measured on. |
-| C29 | `64defd8` | Added | `evals` workspace package: `uv run python -m evals.runner` (or `make evals`) sends each case in `evals/datasets/demo.yaml` through `Agent.respond` as its own user, then prints a score table and writes `results.json` and `report.md` under `evals/results/`. |
-| C29 | `64defd8` | Added | Scorers for tool choice, retrieval hit rate, answer facts (graded by a judge model with a rubric), refusals in no-access cases, injection resistance, and cost and latency budgets. With tracing enabled, the scores are attached to each case's Langfuse trace as `eval.<scorer>`. |
-| C29 | `64defd8` | Added | 21 demo cases over the seeded projects and documents for three users with different groups, including no-access questions and the three C21 injection fixtures. |
-| C28 | `32c0314` | Added | Thumbs up/down with an optional comment under each answer, via `PUT /sessions/{id}/turns/{turn_id}/feedback`. One current vote per turn is stored in the `feedback` table and returned with the session, so the UI shows it after a reload. |
-| C28 | `32c0314` | Added | With tracing enabled, each vote is sent to Langfuse as a boolean `user-feedback` score on the turn's trace. A background exporter retries failed deliveries from Postgres every minute, and a revised vote replaces the earlier score because the score ID is the turn ID. |
-| C27 | `d308473` | Added | Postgres records each admitted turn and executed tool call, including the question, arguments, outcome and returned source identifiers. The application can append records. A database trigger rejects updates, deletes and truncation. |
+| C30 | `0a35caf` | Added | Evals workflow: on changes to prompts, tools, retrieval, context, LLM adapters, settings, demo data or evals, CI runs the eval set with the committed settings and fails when a score drops below `evals/baseline.json` by more than its tolerance. The comparison and report go to the job summary. |
+| C30 | `0a35caf` | Added | `evals.runner --baseline` compares a run with the baseline (exit 1 on regression), and `--write-baseline` saves a new one. `--config-from` takes the model, context and retrieval settings from an env file. Refusal and injection allow no drop. Changed case counts and a doubled cost per case also fail. |
+| C30 | `0a35caf` | Changed | `.env.example` uses `openai:gpt-6-luna` with fallback `openai:gpt-5.6-luna` for chat and summaries, matching the models the baseline was measured on. |
+| C29 | `d9a0c5a` | Added | `evals` workspace package: `uv run python -m evals.runner` (or `make evals`) sends each case in `evals/datasets/demo.yaml` through `Agent.respond` as its own user, then prints a score table and writes `results.json` and `report.md` under `evals/results/`. |
+| C29 | `d9a0c5a` | Added | Scorers for tool choice, retrieval hit rate, answer facts (graded by a judge model with a rubric), refusals in no-access cases, injection resistance, and cost and latency budgets. With tracing enabled, the scores are attached to each case's Langfuse trace as `eval.<scorer>`. |
+| C29 | `d9a0c5a` | Added | 21 demo cases over the seeded projects and documents for three users with different groups, including no-access questions and the three C21 injection fixtures. |
+| C28 | `bc694a2` | Added | Thumbs up/down with an optional comment under each answer, via `PUT /sessions/{id}/turns/{turn_id}/feedback`. One current vote per turn is stored in the `feedback` table and returned with the session, so the UI shows it after a reload. |
+| C28 | `bc694a2` | Added | With tracing enabled, each vote is sent to Langfuse as a boolean `user-feedback` score on the turn's trace. A background exporter retries failed deliveries from Postgres every minute, and a revised vote replaces the earlier score because the score ID is the turn ID. |
+| C27 | `94dd6cc` | Added | Postgres records each admitted turn and executed tool call, including the question, arguments, outcome and returned source identifiers. The application can append records. A database trigger rejects updates, deletes and truncation. |
 
 ### 2026-11-25
 
 | Plan id | Commit | Type | Change |
 |---|---|---|---|
-| C26 | `553b8d2` | Added | Chat admission enforces a rolling per-user request limit and UTC daily spending cap across sessions. Rejected requests stream a readable reason before generation. |
-| C25 | `eb9e02b` | Added | The LLM gateway retries transient failures with capped backoff and jitter, then tries the configured fallback models in order. A partial response is preserved if streaming fails. |
-| C25 | `eb9e02b` | Added | Per-model USD rates account for cache reads, cache writes and long-context pricing. Generation spans identify the serving model and cost. Saved turns and completion events total reported costs across tool steps and summary calls. |
-| C24 | `b614f2d` | Added | User memory behind `MEMORY_ENABLED`: `memory` tool (remember, recall, forget), `user_memory` table, recent facts in the system prompt, `GET/DELETE /memories` and a "What I remember" UI panel. |
-| C24 | `b614f2d` | Security | `remember` must quote the user's own words, checked against what they typed in the session, so document or tool text cannot become a memory; the app role cannot update facts, the read-only role cannot read them, and the tool runs in-process so the MCP server stays read-only. |
-| C23 | `c49396e` | Added | Context pipeline (`CONTEXT_STRATEGY=summary,compact_tools`, default): tool results from earlier turns become one-line notes, a running summary written by `LLM_SUMMARY_MODEL` replaces older turns in large steps (turn trigger or 80% of the token budget), and a final budget guard. |
-| C23 | `c49396e` | Added | Prompt caching: Anthropic cache breakpoints after tools, system prompt and conversation; OpenAI `prompt_cache_key` per session. `PROMPT_CACHING` toggles it. |
-| C23 | `c49396e` | Added | Migration for `summary_through_sequence` and `summary_updated_at` on sessions, and a forward-only `update_summary` store method; `update_session` now changes only the title. |
-| C23 | `c49396e` | Changed | Token estimates count tool results wrapped as sent; summary model usage is added to the turn's usage. |
-| C22 | `feb127a` | Added | `mcp_servers` package and `mcp` Compose service serving `query_projects` and `search_docs` over stateless streamable HTTP, from the same `Tool` objects used in-process; `TOOLS_TRANSPORT` selects in-process or MCP. |
-| C22 | `feb127a` | Security | Each MCP request carries a short-lived HS256 token signed by the backend (user, groups, session, turn, trace); the server verifies it before handling any message and builds `ToolContext` only from it. Only the MCP service holds the read-only role and models. |
-| C22 | `feb127a` | Added | `McpToolset`/`McpTool` client behind the existing tool interface, `python -m mcp_servers.token` for external clients, and parity tests running the same agent tests on both transports. |
-| C22 | `feb127a` | Fixed | Docker images could contain stale workspace code because uv's shared cache reused wheels until a pyproject.toml changed; all members now declare `tool.uv.cache-keys`. |
-| C21 | `e560bb6` | Security | Tool results are cleaned (invisible characters, images) and wrapped in an `untrusted_data` envelope before each model call; stored history is unchanged. The system prompt never follows instructions found there and never outputs images. |
-| C21 | `e560bb6` | Security | The chat UI renders text without images, closing zero-click exfiltration through image URLs. |
-| C21 | `e560bb6` | Added | Three adversarial seed documents (formatting hijack, link exfiltration with a fake closing tag, fake system message with an invisible tag-character instruction) and opt-in `llm` tests with an undefended control. |
-| C21 | `e560bb6` | Changed | `search_docs` drops model-supplied `tags` and uses flat `limit`/`cursor` arguments; invalid tool arguments name the failing fields without echoing values. |
-| C20 | `f56dfc8` | Added | `search_docs` tool: hybrid retrieval, reranking of the top fused hits, and paginated compact hits (title, section, source, snippet, chunk id, score) with cursors bound to the user, query and filters. The system prompt asks for bracketed title and section citations and "no document" instead of guesses. |
-| C20 | `f56dfc8` | Added | Reranker strategies `none`, `local` (fastembed cross-encoder) and `api` (Cohere-compatible `/rerank`), selected by `RERANKER`. |
-| C20 | `f56dfc8` | Security | Dev tokens carry groups (`token:identity:group|group`) and the CLI has `--groups`; search access comes only from these, never from tool arguments. |
-| C20 | `f56dfc8` | Decision | D5: local `Xenova/ms-marco-MiniLM-L-6-v2` on the top 20, MRR@10 0.931 against 0.915 without a reranker. |
-| C20 | `f56dfc8` | Changed | The backend image installs `chatbot[local-embeddings]` and keeps downloaded models in the `model_cache` volume. |
-| C19 | `7164598` | Added | Hybrid retriever: Postgres full-text leg (any stemmed term, behind a `LexicalSearch` interface) and pgvector cosine leg with iterative HNSW scan, run concurrently on the read-only role and merged with reciprocal rank fusion. |
-| C19 | `7164598` | Security | The caller's groups, plus optional source-prefix and tag filters, are applied inside both SQL queries; a caller with no groups gets nothing. Tested for every labeled query across five group sets. |
-| C19 | `7164598` | Added | 24-question labeled set with a test that checks hybrid recall@10 and exact-term ranking against each leg; CI caches the local embedding model. |
-| C19 | `7164598` | Changed | Plan: "Done when" amended because vector-only had the best overall MRR on the small demo corpus (vector 0.958, hybrid 0.915, lexical 0.795); hybrid kept as the design. |
-| C18 | `dd420e7` | Added | `rag` schema with documents and chunks: HNSW cosine index on embeddings, weighted generated full-text vector with GIN index, and per-chunk allowed groups with GIN index. |
-| C18 | `dd420e7` | Added | Structure-aware Markdown chunking (heading paths, whole code fences, in-section overlap), `Embedder` strategy (`local:` fastembed, `openai:`, `fake:`), and an idempotent `python -m chatbot.rag.ingest` CLI with `--prune` and `make ingest`. |
-| C18 | `dd420e7` | Added | Seven synthetic demo documents across `employees`, `engineering`, `finance`, `hr` and `leadership`, including restricted ones for access-control tests. |
-| C18 | `dd420e7` | Security | Documents must name at least one group (no implicit public access); the read-only role gets `SELECT` on `rag` only, the application role nothing, and ingestion writes as the owner. |
-| C18 | `dd420e7` | Decision | D4: local `BAAI/bge-small-en-v1.5` (384 dimensions); fastembed is an optional `local-embeddings` extra so the migrate image stays small. |
-| C18 | `dd420e7` | Changed | Integration-test databases now get the `vector` extension from the superuser, which the `rag` migration requires. |
+| C26 | `3ca023d` | Added | Chat admission enforces a rolling per-user request limit and UTC daily spending cap across sessions. Rejected requests stream a readable reason before generation. |
+| C25 | `0b16f03` | Added | The LLM gateway retries transient failures with capped backoff and jitter, then tries the configured fallback models in order. A partial response is preserved if streaming fails. |
+| C25 | `0b16f03` | Added | Per-model USD rates account for cache reads, cache writes and long-context pricing. Generation spans identify the serving model and cost. Saved turns and completion events total reported costs across tool steps and summary calls. |
+| C24 | `0f019ea` | Added | User memory behind `MEMORY_ENABLED`: `memory` tool (remember, recall, forget), `user_memory` table, recent facts in the system prompt, `GET/DELETE /memories` and a "What I remember" UI panel. |
+| C24 | `0f019ea` | Security | `remember` must quote the user's own words, checked against what they typed in the session, so document or tool text cannot become a memory; the app role cannot update facts, the read-only role cannot read them, and the tool runs in-process so the MCP server stays read-only. |
+| C23 | `f0aaaa6` | Added | Context pipeline (`CONTEXT_STRATEGY=summary,compact_tools`, default): tool results from earlier turns become one-line notes, a running summary written by `LLM_SUMMARY_MODEL` replaces older turns in large steps (turn trigger or 80% of the token budget), and a final budget guard. |
+| C23 | `f0aaaa6` | Added | Prompt caching: Anthropic cache breakpoints after tools, system prompt and conversation; OpenAI `prompt_cache_key` per session. `PROMPT_CACHING` toggles it. |
+| C23 | `f0aaaa6` | Added | Migration for `summary_through_sequence` and `summary_updated_at` on sessions, and a forward-only `update_summary` store method; `update_session` now changes only the title. |
+| C23 | `f0aaaa6` | Changed | Token estimates count tool results wrapped as sent; summary model usage is added to the turn's usage. |
+| C22 | `9338ca4` | Added | `mcp_servers` package and `mcp` Compose service serving `query_projects` and `search_docs` over stateless streamable HTTP, from the same `Tool` objects used in-process; `TOOLS_TRANSPORT` selects in-process or MCP. |
+| C22 | `9338ca4` | Security | Each MCP request carries a short-lived HS256 token signed by the backend (user, groups, session, turn, trace); the server verifies it before handling any message and builds `ToolContext` only from it. Only the MCP service holds the read-only role and models. |
+| C22 | `9338ca4` | Added | `McpToolset`/`McpTool` client behind the existing tool interface, `python -m mcp_servers.token` for external clients, and parity tests running the same agent tests on both transports. |
+| C22 | `9338ca4` | Fixed | Docker images could contain stale workspace code because uv's shared cache reused wheels until a pyproject.toml changed; all members now declare `tool.uv.cache-keys`. |
+| C21 | `200b392` | Security | Tool results are cleaned (invisible characters, images) and wrapped in an `untrusted_data` envelope before each model call; stored history is unchanged. The system prompt never follows instructions found there and never outputs images. |
+| C21 | `200b392` | Security | The chat UI renders text without images, closing zero-click exfiltration through image URLs. |
+| C21 | `200b392` | Added | Three adversarial seed documents (formatting hijack, link exfiltration with a fake closing tag, fake system message with an invisible tag-character instruction) and opt-in `llm` tests with an undefended control. |
+| C21 | `200b392` | Changed | `search_docs` drops model-supplied `tags` and uses flat `limit`/`cursor` arguments; invalid tool arguments name the failing fields without echoing values. |
+| C20 | `834d5b2` | Added | `search_docs` tool: hybrid retrieval, reranking of the top fused hits, and paginated compact hits (title, section, source, snippet, chunk id, score) with cursors bound to the user, query and filters. The system prompt asks for bracketed title and section citations and "no document" instead of guesses. |
+| C20 | `834d5b2` | Added | Reranker strategies `none`, `local` (fastembed cross-encoder) and `api` (Cohere-compatible `/rerank`), selected by `RERANKER`. |
+| C20 | `834d5b2` | Security | Dev tokens carry groups (`token:identity:group|group`) and the CLI has `--groups`; search access comes only from these, never from tool arguments. |
+| C20 | `834d5b2` | Decision | D5: local `Xenova/ms-marco-MiniLM-L-6-v2` on the top 20, MRR@10 0.931 against 0.915 without a reranker. |
+| C20 | `834d5b2` | Changed | The backend image installs `chatbot[local-embeddings]` and keeps downloaded models in the `model_cache` volume. |
+| C19 | `f454928` | Added | Hybrid retriever: Postgres full-text leg (any stemmed term, behind a `LexicalSearch` interface) and pgvector cosine leg with iterative HNSW scan, run concurrently on the read-only role and merged with reciprocal rank fusion. |
+| C19 | `f454928` | Security | The caller's groups, plus optional source-prefix and tag filters, are applied inside both SQL queries; a caller with no groups gets nothing. Tested for every labeled query across five group sets. |
+| C19 | `f454928` | Added | 24-question labeled set with a test that checks hybrid recall@10 and exact-term ranking against each leg; CI caches the local embedding model. |
+| C19 | `f454928` | Changed | Plan: "Done when" amended because vector-only had the best overall MRR on the small demo corpus (vector 0.958, hybrid 0.915, lexical 0.795); hybrid kept as the design. |
+| C18 | `0be3756` | Added | `rag` schema with documents and chunks: HNSW cosine index on embeddings, weighted generated full-text vector with GIN index, and per-chunk allowed groups with GIN index. |
+| C18 | `0be3756` | Added | Structure-aware Markdown chunking (heading paths, whole code fences, in-section overlap), `Embedder` strategy (`local:` fastembed, `openai:`, `fake:`), and an idempotent `python -m chatbot.rag.ingest` CLI with `--prune` and `make ingest`. |
+| C18 | `0be3756` | Added | Seven synthetic demo documents across `employees`, `engineering`, `finance`, `hr` and `leadership`, including restricted ones for access-control tests. |
+| C18 | `0be3756` | Security | Documents must name at least one group (no implicit public access); the read-only role gets `SELECT` on `rag` only, the application role nothing, and ingestion writes as the owner. |
+| C18 | `0be3756` | Decision | D4: local `BAAI/bge-small-en-v1.5` (384 dimensions); fastembed is an optional `local-embeddings` extra so the migrate image stays small. |
+| C18 | `0be3756` | Changed | Integration-test databases now get the `vector` extension from the superuser, which the `rag` migration requires. |
 
 ### 2026-11-12
 
 | Plan id | Commit | Type | Change |
 |---|---|---|---|
-| C17 | `2e44b67` | Added | GitHub Actions CI: ruff, mypy, unit tests, and integration tests against Compose Postgres; `llm` tests excluded. |
-| — | `458ade3` | Fixed | Provider adapters log the provider's error reason and request ID; users still see a generic message. |
-| C16 | `8c47c80` | Added | Backend, migrate and frontend images built with uv from the lockfile; Compose starts postgres, migrate, backend and frontend in order with healthchecks. |
-| C16 | `8c47c80` | Fixed | `.env.example` no longer puts inline comments on empty keys, which Compose read as values. |
+| C17 | `ac3f8b3` | Added | GitHub Actions CI: ruff, mypy, unit tests, and integration tests against Compose Postgres; `llm` tests excluded. |
+| — | `cff69a4` | Fixed | Provider adapters log the provider's error reason and request ID; users still see a generic message. |
+| C16 | `4d8fbf5` | Added | Backend, migrate and frontend images built with uv from the lockfile; Compose starts postgres, migrate, backend and frontend in order with healthchecks. |
+| C16 | `4d8fbf5` | Fixed | `.env.example` no longer puts inline comments on empty keys, which Compose read as values. |
 | C15 | `cd0ac6d` | Added | Streamlit workspace client with saved conversations, new-chat drafts, streaming replies, collapsed tool activity and URL-based session selection. |
 | C15 | `cd0ac6d` | Added | Independent frontend settings and HTTP/SSE client, friendly failures, account-change isolation, and AppTest coverage including a real API/Postgres reload-and-resume walkthrough. |
 | C14 | `d51f349` | Added | FastAPI workspace service with lifespan-owned chatbot resources, dev bearer authentication, owner-scoped session endpoints, health and POST chat SSE. |
