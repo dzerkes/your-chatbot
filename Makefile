@@ -1,7 +1,7 @@
 COMPOSE ?= docker compose
 UV ?= uv
 
-.PHONY: up down psql migrate seed ingest test test-integration lint
+.PHONY: up down psql migrate seed ingest test test-integration lint evals
 
 up:
 	$(COMPOSE) up -d --wait postgres
@@ -30,3 +30,6 @@ test-integration: migrate
 lint:
 	$(UV) run ruff check .
 	$(UV) run ruff format --check .
+
+evals: seed ingest
+	$(UV) run python -m evals.runner
