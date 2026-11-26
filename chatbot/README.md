@@ -267,6 +267,19 @@ The CLI prints the session UUID to stderr. Reuse it with the same `--user` to
 resume a conversation. Enter `/quit`, `/exit` or EOF to leave interactive chat.
 `--prompt` streams one reply to stdout, then exits with status 0 on success or
 1 on failure. The CLI user option selects a local development identity.
+Each completed turn prints its trace ID to stderr after the answer.
+
+`replay` asks the user questions of a saved session again, in order, in a new
+session for the same user, and prints each original answer next to the new one:
+
+```bash
+uv run python -m chatbot.cli replay --user alice --session SESSION_UUID [--until TURN_UUID]
+```
+
+It uses the current code and settings, so environment overrides such as
+`LLM_PRIMARY=...` compare models or prompts on a real conversation. `--until`
+stops after the given turn. Exit status is 1 when any replayed turn failed.
+See [docs/DEBUGGING.md](../docs/DEBUGGING.md).
 
 Application code uses the same interface:
 

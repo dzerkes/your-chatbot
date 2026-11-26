@@ -10,13 +10,23 @@ All important changes to this project are recorded here, newest first.
 
 ## Unreleased
 
+### 2026-11-27
+
+| Plan id | Commit | Type | Change |
+|---|---|---|---|
+| C31 | Pending | Added | `docs/RUNBOOK.md`: from clone to a first answer, services and health checks, common operations, a table of failure codes and fixes, tracing setup, evals, and how to add a provider, a tool or a context strategy. |
+| C31 | Pending | Added | `docs/DEBUGGING.md`: follow one bad answer from the UI, a thumbs down or a user's report to its turn, stored messages, audit rows, retrieved chunks, logs and trace, then replay it and keep it fixed with an eval case. |
+| C31 | Pending | Added | `python -m chatbot.cli replay --session ID [--until TURN]` asks a saved session's questions again in a new session with the current code and settings, printing each original answer next to the new one. The CLI also prints each turn's trace ID. |
+| C31 | Pending | Added | `docker-compose.langfuse.yml`: self-hosted Langfuse as an overlay on the main Compose file, initialized with the project keys from `.env`. Setup is in the runbook. |
+| C31 | Pending | Fixed | `LOG_LEVEL=DEBUG` now logs each model request verbatim, as `.env.example` and the architecture document already said. |
+
 ### 2026-11-26
 
 | Plan id | Commit | Type | Change |
 |---|---|---|---|
-| C30 | Pending | Added | Evals workflow: on changes to prompts, tools, retrieval, context, LLM adapters, settings, demo data or evals, CI runs the eval set with the committed settings and fails when a score drops below `evals/baseline.json` by more than its tolerance. The comparison and report go to the job summary. |
-| C30 | Pending | Added | `evals.runner --baseline` compares a run with the baseline (exit 1 on regression), and `--write-baseline` saves a new one. `--config-from` takes the model, context and retrieval settings from an env file. Refusal and injection allow no drop. Changed case counts and a doubled cost per case also fail. |
-| C30 | Pending | Changed | `.env.example` uses `openai:gpt-6-luna` with fallback `openai:gpt-5.6-luna` for chat and summaries, matching the models the baseline was measured on. |
+| C30 | `4bb9db6` | Added | Evals workflow: on changes to prompts, tools, retrieval, context, LLM adapters, settings, demo data or evals, CI runs the eval set with the committed settings and fails when a score drops below `evals/baseline.json` by more than its tolerance. The comparison and report go to the job summary. |
+| C30 | `4bb9db6` | Added | `evals.runner --baseline` compares a run with the baseline (exit 1 on regression), and `--write-baseline` saves a new one. `--config-from` takes the model, context and retrieval settings from an env file. Refusal and injection allow no drop. Changed case counts and a doubled cost per case also fail. |
+| C30 | `4bb9db6` | Changed | `.env.example` uses `openai:gpt-6-luna` with fallback `openai:gpt-5.6-luna` for chat and summaries, matching the models the baseline was measured on. |
 | C29 | `64defd8` | Added | `evals` workspace package: `uv run python -m evals.runner` (or `make evals`) sends each case in `evals/datasets/demo.yaml` through `Agent.respond` as its own user, then prints a score table and writes `results.json` and `report.md` under `evals/results/`. |
 | C29 | `64defd8` | Added | Scorers for tool choice, retrieval hit rate, answer facts (graded by a judge model with a rubric), refusals in no-access cases, injection resistance, and cost and latency budgets. With tracing enabled, the scores are attached to each case's Langfuse trace as `eval.<scorer>`. |
 | C29 | `64defd8` | Added | 21 demo cases over the seeded projects and documents for three users with different groups, including no-access questions and the three C21 injection fixtures. |

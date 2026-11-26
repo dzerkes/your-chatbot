@@ -104,6 +104,20 @@ async def test_plain_answer_persistence_usage_and_followup_history() -> None:
     assert provider.requests[1].messages[:2] == messages
 
 
+async def test_debug_logging_shows_each_model_request(caplog: pytest.LogCaptureFixture) -> None:
+    agent, _, provider, user, session = await setup(
+        [calls("one"), answer("Found"), calls("two"), answer("Found")]
+    )
+    with caplog.at_level("INFO", logger="chatbot.agent"):
+        _ = [event async for event in agent.respond(session.id, "Quiet", user)]
+    assert not [r for r in caplog.records if r.getMessage().startswith("Model request")]
+    with caplog.at_level("DEBUG", logger="chatbot.agent"):
+        _ = [event async for event in agent.respond(session.id, "Find values", user)]
+    logged = [r.getMessage() for r in caplog.records if r.getMessage().startswith("Model request")]
+    assert [line.split(",")[1] for line in logged] == [" step 1", " step 2"]
+    assert provider.requests[-1].model_dump_json() in logged[-1]
+
+
 @pytest.mark.parametrize("count", [1, 2])
 async def test_single_and_multiple_tools_across_steps(count: int) -> None:
     agent, store, provider, user, session = await setup(

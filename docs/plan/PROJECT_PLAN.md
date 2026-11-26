@@ -497,7 +497,7 @@ real tracing, before making any single layer good.
   changed case counts, cost growth and baseline regeneration. The workflow has not
   yet run on GitHub; it needs an `OPENAI_API_KEY` secret.
 
-### [ ] C31 `docs: add runbook, debugging guide and Langfuse self-hosting notes`
+### [x] C31 `docs: add runbook, debugging guide and Langfuse self-hosting notes`
 
 - **Goal:** someone else can run and debug the system.
 - **Files:** `docs/RUNBOOK.md`, `docs/DEBUGGING.md`, optional
@@ -507,6 +507,14 @@ real tracing, before making any single layer good.
   provider, a tool, a context strategy.
 - **Done when:** a new reader can go from clone to a debugged turn using only
   the docs.
+- **Verification:** the debugging guide's SQL ran against the local database for a
+  stored eval turn: turn and feedback, messages, audit rows, and the chunks a search
+  returned. `chatbot.cli replay --until` replayed that turn with the real model and
+  printed both answers with their trace IDs. Unit tests cover replay and the debug
+  request log, and the integration tests pass. The merged Compose config with
+  `docker-compose.langfuse.yml` validates, but its Langfuse images have not been
+  started here, and nobody new to the project has followed the runbook from a fresh
+  clone yet.
 
 ---
 
