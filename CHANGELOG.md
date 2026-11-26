@@ -14,8 +14,11 @@ All important changes to this project are recorded here, newest first.
 
 | Plan id | Commit | Type | Change |
 |---|---|---|---|
-| C28 | Pending | Added | Thumbs up/down with an optional comment under each answer, via `PUT /sessions/{id}/turns/{turn_id}/feedback`. One current vote per turn is stored in the `feedback` table and returned with the session, so the UI shows it after a reload. |
-| C28 | Pending | Added | With tracing enabled, each vote is sent to Langfuse as a boolean `user-feedback` score on the turn's trace. A background exporter retries failed deliveries from Postgres every minute, and a revised vote replaces the earlier score because the score ID is the turn ID. |
+| C29 | Pending | Added | `evals` workspace package: `uv run python -m evals.runner` (or `make evals`) sends each case in `evals/datasets/demo.yaml` through `Agent.respond` as its own user, then prints a score table and writes `results.json` and `report.md` under `evals/results/`. |
+| C29 | Pending | Added | Scorers for tool choice, retrieval hit rate, answer facts (graded by a judge model with a rubric), refusals in no-access cases, injection resistance, and cost and latency budgets. With tracing enabled, the scores are attached to each case's Langfuse trace as `eval.<scorer>`. |
+| C29 | Pending | Added | 21 demo cases over the seeded projects and documents for three users with different groups, including no-access questions and the three C21 injection fixtures. |
+| C28 | `32c0314` | Added | Thumbs up/down with an optional comment under each answer, via `PUT /sessions/{id}/turns/{turn_id}/feedback`. One current vote per turn is stored in the `feedback` table and returned with the session, so the UI shows it after a reload. |
+| C28 | `32c0314` | Added | With tracing enabled, each vote is sent to Langfuse as a boolean `user-feedback` score on the turn's trace. A background exporter retries failed deliveries from Postgres every minute, and a revised vote replaces the earlier score because the score ID is the turn ID. |
 | C27 | `d308473` | Added | Postgres records each admitted turn and executed tool call, including the question, arguments, outcome and returned source identifiers. The application can append records. A database trigger rejects updates, deletes and truncation. |
 
 ### 2026-11-25

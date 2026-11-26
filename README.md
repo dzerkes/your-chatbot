@@ -102,6 +102,10 @@ To trace CLI conversations, set `TRACING_ENABLED=true` and the Langfuse project
 keys in `.env`. Traces are grouped by session; see the
 [tracing setup](chatbot/README.md#tracing-to-langfuse) for attributes and export behavior.
 
+To measure answer quality, run the eval set with `make evals` (it calls the real
+models). It prints a score table and writes JSON and Markdown results; see
+[evals/README.md](evals/README.md).
+
 Postgres is available on `127.0.0.1:5432` (override `POSTGRES_PORT` in `.env`).
 `POSTGRES_USER` names the migration owner; `APP_DB_USER` and `RO_DB_USER` name
 the application and tool logins. All three are non-superusers. The container

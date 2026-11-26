@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling>=1.26,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "chatbot-evals"
+version = "0.1.0"
+description = "Eval datasets, scorers and a runner that measure the chatbot's answers."
+requires-python = ">=3.12"
+dependencies = [
+    "chatbot[local-embeddings]",
+    "httpx>=0.27,<1",
+    "pydantic>=2.9,<3",
+    "pyyaml>=6,<7",
+]
+
+[tool.hatch.build]
+dev-mode-dirs = [".."]
+
+[tool.hatch.build.targets.wheel]
+only-include = ["__init__.py", "dataset.py", "judge.py", "langfuse.py", "observe.py", "report.py", "runner.py", "scorers", "datasets"]
+sources = {"" = "evals"}
+
+[tool.uv]
+# Rebuild this package when its sources change, not only its pyproject.toml.
+cache-keys = [{ file = "pyproject.toml" }, { file = "**/*.py" }, { file = "datasets/*.yaml" }]

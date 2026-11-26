@@ -466,7 +466,7 @@ real tracing, before making any single layer good.
 
 ## Phase 5: Quality loop (M5)
 
-### [ ] C29 `feat(evals): add eval dataset, runner and scorers`
+### [x] C29 `feat(evals): add eval dataset, runner and scorers`
 
 - **Goal:** measure answer quality, not guess it.
 - **Files:** `evals/pyproject.toml`, `evals/datasets/*.yaml`, `evals/runner.py`,
@@ -478,6 +478,10 @@ real tracing, before making any single layer good.
   latency. Results are written as JSON and Markdown and sent to Langfuse.
 - **Done when:** `uv run python -m evals.runner` prints a score table for the
   demo data.
+- **Verification:** a live run of the 21 demo cases on `openai:gpt-6-luna` printed
+  the table, wrote both reports and attached its scores to the Langfuse traces. The
+  same cases with a prompt that skips tools failed tool choice, retrieval, facts
+  and a refusal. Unit tests drive the runner with a scripted model, tool and judge.
 
 ### [ ] C30 `ci(evals): run evals on prompt, tool and model changes`
 
