@@ -1,0 +1,102 @@
+"""Typed async tool functions with arguments separated from trusted context."""
+
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from typing import Protocol, cast
+from uuid import UUID
+
+from pydantic import JsonValue, ValidationError
+
+from chatbot.errors import ToolError
+from chatbot.llm.base import ToolDefinition
+from chatbot.logging import log_context
+from chatbot.tools.pagination import MAX_PAGE_SIZE, MAX_RESULT_BYTES, ToolPage
+from chatbot.types import DomainModel, User
+
+
+class ToolInput(DomainModel):
+    """Base for model-supplied arguments; undeclared fields are rejected."""
+
+
+@dataclass(frozen=True)
+class ToolContext:
+    user: User
+    session_id: UUID
+    turn_id: UUID
+    trace_id: str | None = None
+    # The current turn's message as the user typed it (set by the agent, never the
+    # model); lets tools check that something came from the user. Not sent over MCP.
+    user_message: str | None = None
+
+
+class ToolLike(Protocol):
+    """What the registry and agent need from a tool, local or remote (MCP)."""
+
+    name: str
+    description: str
+
+    def definition(self) -> ToolDefinition: ...
+
+    async def execute(
+        self,
+        arguments: dict[str, JsonValue],
+        context: ToolContext,
+        *,
+        max_items: int = MAX_PAGE_SIZE,
+        max_bytes: int = MAX_RESULT_BYTES,
+    ) -> ToolPage: ...
+
+
+class Tool[InputT: ToolInput]:
+    def __init__(
+        self,
+        name: str,
+        description: str,
+        input_model: type[InputT],
+        handler: Callable[[InputT, ToolContext], Awaitable[ToolPage]],
+    ) -> None:
+        if not name or not description:
+            raise ValueError("Tools require a name and description")
+        self.name = name
+        self.description = description
+        self.input_model = input_model
+        self.handler = handler
+
+    def definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name=self.name,
+            description=self.description,
+            input_schema=cast(dict[str, JsonValue], self.input_model.model_json_schema()),
+        )
+
+    async def execute(
+        self,
+        arguments: dict[str, JsonValue],
+        context: ToolContext,
+        *,
+        max_items: int = MAX_PAGE_SIZE,
+        max_bytes: int = MAX_RESULT_BYTES,
+    ) -> ToolPage:
+        try:
+            inputs = self.input_model.model_validate(arguments)
+        except ValidationError as exc:
+            # Name the fields so the model can correct its call; never echo the values.
+            problems = "; ".join(
+                f"{'.'.join(str(part) for part in error['loc']) or 'arguments'}: {error['msg']}"
+                for error in exc.errors(include_url=False, include_input=False)[:5]
+            )
+            raise ToolError(f"Invalid tool arguments: {problems}") from exc
+        with log_context(
+            session_id=context.session_id, turn_id=context.turn_id, trace_id=context.trace_id
+        ):
+            try:
+                result = await self.handler(inputs, context)
+                if not isinstance(result, ToolPage):
+                    raise ToolError("Tool returned an invalid result")
+                if len(result.items) > max_items or result.byte_size() > max_bytes:
+                    raise ToolError("Tool result exceeds the size limit")
+                return result
+            except ToolError:
+                raise
+            except Exception as exc:
+                raise ToolError("Tool execution failed") from exc

@@ -36,8 +36,8 @@ affecting the commits before them.
 | D1 | Where migrations live | Top-level `db/`, not `backend/migrations/`. The `chatbot` package and its tests need the schema without the backend, and a `migrate` compose job runs them once. | Confirmed 2026-11-10 |
 | D2 | CI system | GitHub Actions (`.github/workflows/`). The brief said GitLab CI, but the repo is hosted on GitHub. | Confirmed 2026-11-10 |
 | D3 | Demo data | A small synthetic dataset (clients, projects, documents) with no real company data. | C10 |
-| D4 | Embedding model | A small local model, so no document text leaves the machine and ingestion is free. Alternative: an embeddings API. | C18 |
-| D5 | Reranker | A small local cross-encoder, with `none` as the baseline. Alternative: a rerank API. | C20 |
+| D4 | Embedding model | Local `BAAI/bge-small-en-v1.5` (384 dimensions) through fastembed, so no document text leaves the machine and ingestion is free. `openai:` is the alternative strategy. | Confirmed 2026-11-25 |
+| D5 | Reranker | Local `Xenova/ms-marco-MiniLM-L-6-v2` cross-encoder on the top 20 fused hits; `none` and a Cohere-compatible `api` are the alternatives. | Confirmed 2026-11-25 |
 | D6 | Langfuse | Cloud free tier with non-sensitive data. Self-hosting documented in C31. | C13 |
 
 ---
@@ -65,7 +65,7 @@ affecting the commits before them.
 The aim is the thinnest slice through every layer, with real persistence and
 real tracing, before making any single layer good.
 
-### [ ] C03 `feat(infra): add docker compose with Postgres and pgvector`
+### [x] C03 `feat(infra): add docker compose with Postgres and pgvector`
 
 - **Goal:** one command starts the database with the three roles.
 - **Files:** `docker-compose.yml`, `db/init/01_roles.sql`, `Makefile`
@@ -73,11 +73,13 @@ real tracing, before making any single layer good.
 - **Details:** `pgvector/pgvector` image, named volume, healthcheck. The init
   script creates `chatbot_owner`, `chatbot_app` and `chatbot_ro` from the
   environment and enables the `vector` extension. `chatbot_ro` gets a statement
-  timeout.
+  timeout. The three application roles are non-superusers; the image uses a
+  separate `postgres` bootstrap superuser. Integration tests in
+  `tests/test_infra.py` check authentication, pgvector and permissions.
 - **Done when:** `make up` then `make psql` connects, and `chatbot_ro` cannot
   create a table.
 
-### [ ] C04 `feat(chatbot): add package skeleton with settings, logging and domain types`
+### [x] C04 `feat(chatbot): add package skeleton with settings, logging and domain types`
 
 - **Goal:** an installable `chatbot` package with the shared vocabulary.
 - **Files:** `chatbot/pyproject.toml`, `chatbot/src/chatbot/{config,logging,errors,types}.py`,
@@ -88,7 +90,7 @@ real tracing, before making any single layer good.
   binds `session_id`, `turn_id` and `trace_id` to every line. Typed errors.
 - **Done when:** `uv run pytest` passes and `python -c "import chatbot"` works.
 
-### [ ] C05 `feat(db): add migrations for users, sessions, turns and messages`
+### [x] C05 `feat(db): add migrations for users, sessions, turns and messages`
 
 - **Goal:** the history schema.
 - **Files:** `db/alembic.ini`, `db/migrations/`, a `migrate` service in compose.
@@ -100,17 +102,18 @@ real tracing, before making any single layer good.
 - **Done when:** `docker compose run migrate` creates the tables and
   `alembic downgrade base` removes them.
 
-### [ ] C06 `feat(chatbot): add session and message repositories`
+### [x] C06 `feat(chatbot): add session and message repositories`
 
 - **Goal:** all history SQL in one place.
 - **Files:** `chatbot/src/chatbot/store/{base,postgres,memory}.py`.
 - **Details:** Repository pattern. `SessionStore` and `MessageStore` protocols
   with a Postgres implementation (async) and an in-memory one for unit tests.
-  Writes for one turn happen in one transaction.
+  Writes for one turn happen in one transaction. Reads and writes take an owner
+  id; a saved turn advances the session's activity timestamp.
 - **Done when:** integration tests round-trip a session with a tool call and a
   tool result and read it back identical.
 
-### [ ] C07 `feat(llm): add provider interface, Anthropic adapter and scripted fake`
+### [x] C07 `feat(llm): add provider interface, Anthropic adapter and scripted fake`
 
 - **Goal:** one interface the rest of the code talks to.
 - **Files:** `chatbot/src/chatbot/llm/{base,anthropic,fake}.py`.
@@ -121,7 +124,7 @@ real tracing, before making any single layer good.
 - **Done when:** adapter unit tests pass against recorded responses, and one
   `llm`-marked test streams from the real API.
 
-### [ ] C08 `feat(llm): add OpenAI adapter and provider registry`
+### [x] C08 `feat(llm): add OpenAI adapter and provider registry`
 
 - **Goal:** prove that a new SDK is one adapter and one registration.
 - **Files:** `chatbot/src/chatbot/llm/{openai,registry}.py`.
@@ -131,7 +134,7 @@ real tracing, before making any single layer good.
 - **Done when:** the contract tests pass for both adapters, and changing
   `LLM_PRIMARY` switches provider with no code change.
 
-### [ ] C09 `feat(tools): add tool interface, registry and paginated results`
+### [x] C09 `feat(tools): add tool interface, registry and paginated results`
 
 - **Goal:** the shape every tool follows.
 - **Files:** `chatbot/src/chatbot/tools/{base,registry,pagination}.py`.
@@ -143,7 +146,7 @@ real tracing, before making any single layer good.
 - **Done when:** a toy tool is registered, its schema is generated, and
   pagination tests pass.
 
-### [ ] C10 `feat(data): add demo dataset, curated views and the query_projects tool`
+### [x] C10 `feat(data): add demo dataset, curated views and the query_projects tool`
 
 - **Goal:** the first real tool, with database-enforced read-only access.
 - **Files:** `db/migrations/` (schemas `raw` and `curated`), `db/seed/`,
@@ -156,7 +159,7 @@ real tracing, before making any single layer good.
 - **Done when:** the tool returns pages of projects, and tests show that
   `chatbot_ro` cannot read `raw` or write anywhere.
 
-### [ ] C11 `feat(agent): add the agent loop, respond() and a CLI`
+### [x] C11 `feat(agent): add the agent loop, respond() and a CLI`
 
 - **Goal:** the brain works end to end without any web layer.
 - **Files:** `chatbot/src/chatbot/{agent,app,cli}.py`, `chatbot/src/chatbot/prompts/system.md`.
@@ -169,7 +172,7 @@ real tracing, before making any single layer good.
   several tool calls, tool error, step limit. The CLI answers a question about
   the demo projects.
 
-### [ ] C12 `feat(context): add context builder with full and sliding-window strategies`
+### [x] C12 `feat(context): add context builder with full and sliding-window strategies`
 
 - **Goal:** separate what is stored from what the model sees.
 - **Files:** `chatbot/src/chatbot/context/{base,full,sliding_window,tokens}.py`.
@@ -179,7 +182,7 @@ real tracing, before making any single layer good.
 - **Done when:** tests show the window keeps the last N turns, keeps tool
   pairs intact, and `CONTEXT_STRATEGY` selects the strategy.
 
-### [ ] C13 `feat(tracing): add OpenTelemetry spans exported to Langfuse`
+### [x] C13 `feat(tracing): add OpenTelemetry spans exported to Langfuse`
 
 - **Goal:** every turn is visible as a trace.
 - **Files:** `chatbot/src/chatbot/tracing.py`, small hooks in the agent,
@@ -191,7 +194,7 @@ real tracing, before making any single layer good.
 - **Done when:** an in-memory exporter test asserts the span tree, and a CLI
   chat shows up in Langfuse grouped by session.
 
-### [ ] C14 `feat(backend): add FastAPI service with auth, sessions and chat stream`
+### [x] C14 `feat(backend): add FastAPI service with auth, sessions and chat stream`
 
 - **Goal:** the thin web layer.
 - **Files:** `backend/pyproject.toml`, `backend/app/{main,auth,deps}.py`,
@@ -203,7 +206,7 @@ real tracing, before making any single layer good.
 - **Done when:** API tests pass with the scripted provider, and `curl -N`
   shows a streamed answer.
 
-### [ ] C15 `feat(frontend): add Streamlit chat UI`
+### [x] C15 `feat(frontend): add Streamlit chat UI`
 
 - **Goal:** what the end user sees.
 - **Files:** `frontend/pyproject.toml`, `frontend/app.py`, `frontend/api_client.py`.
@@ -213,8 +216,10 @@ real tracing, before making any single layer good.
   the backend.
 - **Done when:** a manual run-through works: new chat, ask, reload the page,
   reopen the session, continue it.
+- **Verification:** the flow passes AppTest against the running API and Postgres.
+  Native browser review was blocked by unavailable Computer Use permissions.
 
-### [ ] C16 `feat(infra): add Dockerfiles and wire all services in compose`
+### [x] C16 `feat(infra): add Dockerfiles and wire all services in compose`
 
 - **Goal:** milestone M1.
 - **Files:** `backend/Dockerfile`, `frontend/Dockerfile`, `.dockerignore`,
@@ -224,20 +229,27 @@ real tracing, before making any single layer good.
   lockfile.
 - **Done when:** on a clean machine, `cp .env.example .env`, add keys,
   `docker compose up`, and the M1 description holds.
+- **Verification:** a fresh Compose project from an unmodified `.env.example`
+  (placeholder API key) reached healthy on all services; health, session
+  create/list, Streamlit health and frontend-to-backend networking worked, and
+  a second boot left the seed unchanged. A real streamed answer needs a real key.
 
-### [ ] C17 `ci: add lint, type-check and test pipeline`
+### [x] C17 `ci: add lint, type-check and test pipeline`
 
 - **Goal:** every push is checked.
 - **Files:** `.github/workflows/ci.yml`.
 - **Details:** jobs: lint (ruff), types (mypy), unit tests, integration tests
-  with a Postgres service container. `llm` tests are excluded.
+  against Postgres. `llm` tests are excluded. Postgres runs through
+  `docker-compose.yml` (`make test-integration`), not a job service container:
+  the tests drive `docker compose exec/run`, and the `db/init` role setup must be
+  mounted from the checkout.
 - **Done when:** the workflow is green on `main`.
 
 ---
 
 ## Phase 2: Company data (M2)
 
-### [ ] C18 `feat(rag): add document schema and ingestion pipeline`
+### [x] C18 `feat(rag): add document schema and ingestion pipeline`
 
 - **Goal:** documents in the database, ready for both kinds of search.
 - **Files:** `db/migrations/` (schema `rag`), `chatbot/src/chatbot/rag/{chunking,embeddings,ingest}.py`,
@@ -249,19 +261,35 @@ real tracing, before making any single layer good.
   for groups.
 - **Done when:** `python -m chatbot.rag.ingest db/seed/documents` loads the
   demo documents, and running it twice changes nothing.
+- **Verification:** with the local model, `make ingest` loaded 7 documents as 36
+  chunks and a second run reported 7 unchanged. Paraphrased queries ("vacation
+  days" → annual leave) found the right section by vector distance. The
+  migration needs the `vector` extension, which a superuser creates (db/init).
 
-### [ ] C19 `feat(rag): add hybrid retriever with access-control filter`
+### [x] C19 `feat(rag): add hybrid retriever with access-control filter`
 
 - **Goal:** good candidates, and only ones the user may see.
-- **Files:** `chatbot/src/chatbot/rag/{lexical,vector,fusion,retriever}.py`.
+- **Files:** `chatbot/src/chatbot/rag/{base,lexical,vector,fusion,retriever}.py`,
+  `tests/fixtures/retrieval_labeled_set.json`.
 - **Details:** lexical leg and vector leg each return candidates, merged with
   reciprocal rank fusion. The group filter and other metadata filters are
   applied inside both SQL queries. The lexical leg sits behind an interface
-  (see ARCHITECTURE.md section 3.5).
+  (see ARCHITECTURE.md section 3.5). It matches any stemmed query term, because
+  Postgres' default query parsers require every word and miss most questions.
 - **Done when:** tests show that a user never gets a chunk outside their
-  groups, and that hybrid beats each leg alone on a small labeled set.
+  groups, and that on a small labeled set hybrid finds at least as many answers
+  in its top 10 as the best single leg and ranks exact-term questions best.
+- **Plan change:** the original goal was "hybrid beats each leg alone". On the
+  24 labeled questions over the 36 demo chunks, MRR@10 was vector 0.958,
+  hybrid 0.915, lexical 0.795. Hybrid was best on exact-term questions (1.000
+  against 0.950 for each leg) and tied vector at 100% recall@10, but lost on
+  paraphrases. The corpus is too small for the embedding model to confuse
+  names and codes, which is where the lexical leg pays off. Hybrid stays the
+  design: it protects identifier queries as the corpus grows, and the C20
+  reranker reorders a top 10 that already holds every answer. Revisit with the
+  C29 evals on a larger corpus.
 
-### [ ] C20 `feat(rag): add reranker strategies and the search_docs tool`
+### [x] C20 `feat(rag): add reranker strategies and the search_docs tool`
 
 - **Goal:** the second real tool.
 - **Files:** `chatbot/src/chatbot/rag/rerank/`, `chatbot/src/chatbot/tools/search_docs.py`.
@@ -271,8 +299,18 @@ real tracing, before making any single layer good.
   sources and ask for the next page.
 - **Done when:** the chatbot answers a question from the demo documents with
   citations, and a user without access gets no answer from restricted ones.
+- **Also:** dev tokens carry groups (`token:identity:group|group`); the CLI has
+  `--groups`. The backend image installs the local models' extra and keeps the
+  downloaded models in a named volume.
+- **Verification:** on the labeled set, MRR@10 of the fused list was 0.915;
+  rerankers on the top 20 scored MiniLM-L-6 0.931 (~250 ms per query on a
+  laptop CPU), MiniLM-L-12 0.938 (~490 ms) and jina-tiny 0.907. Through the
+  running stack with `gpt-6-luna`: alice (employees, engineering) got her
+  annual-leave answer cited as [Employee handbook > Leave > Annual leave] and
+  "no document" for the architect day rate; bob (finance, leadership) got
+  "1,150 euros" cited as [Pricing guidelines 2026 > Day rates].
 
-### [ ] C21 `feat(security): add prompt-injection defenses for retrieved content`
+### [x] C21 `feat(security): add prompt-injection defenses for retrieved content`
 
 - **Goal:** retrieved text is treated as data.
 - **Files:** `chatbot/src/chatbot/safety.py`, prompt updates, frontend
@@ -283,8 +321,20 @@ real tracing, before making any single layer good.
   injected instructions for testing.
 - **Done when:** `llm`-marked tests with the adversarial documents show that
   the model does not follow the injected instructions.
+- **Verification:** `gpt-6-luna` ignored every injection even with no defenses,
+  so a test on it alone proves nothing. The `llm` tests therefore also run the
+  smaller `gpt-5.4-nano`, and a control requires an injection to succeed when
+  the defenses are off. Measured on that model, formatting hijack followed
+  9/10 with a bare prompt, 4/10 with C11's one-line rule, and 0/10 with either
+  the C21 prompt or wrapping alone, and with both. `gpt-5-nano` still followed
+  the formatting hijack 3/5 with defenses (bare: 5/5), so the defenses reduce
+  rather than remove the risk on weak models; read-only tools and access
+  control bound the damage. The suite passed twice in a row (7/7).
+- **Also:** `search_docs` no longer offers `tags` (models guessed tags and got
+  nothing) and takes flat `limit` and `cursor` arguments (small models
+  misplaced the nested object). Invalid tool arguments now name the fields.
 
-### [ ] C22 `refactor(tools): serve tools over MCP`
+### [x] C22 `refactor(tools): serve tools over MCP`
 
 - **Goal:** tools become reusable by other clients.
 - **Files:** `mcp_servers/pyproject.toml`, `mcp_servers/data_server.py`,
@@ -296,12 +346,23 @@ real tracing, before making any single layer good.
   token; the server verifies it and never trusts identity from tool arguments.
 - **Done when:** the same agent tests pass with tools in-process and over MCP,
   and an external MCP client can list and call the tools.
+- **Verification:** `tests/test_mcp_tools.py` runs the same scripted agent
+  tests on both transports against a seeded database and checks that their
+  tool results are identical; `mcp_servers/tests` covers 401s (missing,
+  forged, expired and unsigned tokens) and a generic MCP client with a dev
+  token. Through Compose, bob's cited pricing answer went over MCP, and a plain
+  MCP client on localhost:8001 listed and called both tools.
+- **Also found:** Docker builds that share uv's cache installed stale workspace
+  code, because uv rebuilds a local package only when its pyproject.toml
+  changes. Every member now sets `tool.uv.cache-keys`. The C21 note that the
+  rebuilt stack ran the new defenses was likely wrong for that reason; the
+  C21 tests ran in-process and are unaffected.
 
 ---
 
 ## Phase 3: Long conversations (M3)
 
-### [ ] C23 `feat(context): add tool-result compaction, running summary and prompt caching`
+### [x] C23 `feat(context): add tool-result compaction, running summary and prompt caching`
 
 - **Goal:** long sessions stay cheap, fast and accurate.
 - **Files:** `chatbot/src/chatbot/context/{compact_tools,summary,pipeline}.py`,
@@ -313,8 +374,19 @@ real tracing, before making any single layer good.
   Summaries happen in large, infrequent steps to keep the prefix stable.
 - **Done when:** a 60-turn scripted session stays under
   `CONTEXT_MAX_INPUT_TOKENS`, and traces show cached tokens on later turns.
+- **Verification:** the scripted test runs 60 turns with ~2.8 KB tool results
+  under a 6,000-token budget: every request fits, and each request starts with
+  the previous one except on the turns where a summary was written. A
+  sliding window alone shifts the prefix on every turn once full. A live
+  5-turn session on `gpt-6-luna` reported cached input of 0, 1,204, 2,588,
+  2,976 and 3,455 tokens per turn (89% of input by turn 5), and Langfuse
+  generations show the same cached counts.
+- **Also:** summaries also trigger at 80% of the token budget, because the
+  turn trigger alone let the budget guard drop a turn on every request, which
+  broke the cache each time. Token estimates now count tool results wrapped as
+  sent.
 
-### [ ] C24 `feat(memory): add user memory tool behind a feature flag`
+### [x] C24 `feat(memory): add user memory tool behind a feature flag`
 
 - **Goal:** cross-session facts about the user.
 - **Files:** migration for `user_memory`, `chatbot/src/chatbot/tools/memory.py`,
@@ -325,12 +397,20 @@ real tracing, before making any single layer good.
   content from retrieved documents. Off unless `MEMORY_ENABLED=true`.
 - **Done when:** a fact stated in one session is used in a new one, and the
   user can see and delete it.
+- **Verification:** through the backend app with `gpt-6-luna` and memory on:
+  session 1 saved "works on the Research Portal" with the user's quote; a new
+  session answered "You're working on the Research Portal"; `GET /memories`
+  listed it, `DELETE` removed it, and a later session no longer knew. Unit
+  tests show a quote that appears only in a tool result (an injected
+  "remember that...") is rejected.
+- **Also:** the memory tool stays in-process even with `TOOLS_TRANSPORT=mcp`,
+  because it writes; `ToolContext` gained `user_message` for the quote check.
 
 ---
 
 ## Phase 4: Governance (M4)
 
-### [ ] C25 `feat(gateway): add fallbacks, retries and cost accounting`
+### [x] C25 `feat(gateway): add fallbacks, retries and cost accounting`
 
 - **Goal:** one place for reliability and spend.
 - **Files:** `chatbot/src/chatbot/llm/{gateway,pricing}.py`.
@@ -340,8 +420,11 @@ real tracing, before making any single layer good.
   table per model and written to the turn and the span.
 - **Done when:** fault-injection tests show retry then fallback, and each turn
   has a cost.
+- **Verification:** scripted failures exercise ordered fallbacks, bounded retries
+  and interrupted streams. CLI integration tests compare the priced usage of a
+  multi-step turn with its Postgres record and exported generation spans.
 
-### [ ] C26 `feat(limits): add per-user rate limits and cost caps`
+### [x] C26 `feat(limits): add per-user rate limits and cost caps`
 
 - **Goal:** no single user can run up the bill.
 - **Files:** `chatbot/src/chatbot/limits.py`, backend dependency.
@@ -350,8 +433,11 @@ real tracing, before making any single layer good.
   the UI when a limit is hit.
 - **Done when:** tests show a blocked request after the limit, and the UI
   shows a readable message.
+- **Verification:** concurrent reservations across sessions exercise both history stores.
+  API tests cover user isolation and rejection before generation. A Streamlit test
+  checks the spending-limit message survives the conversation reload.
 
-### [ ] C27 `feat(audit): add append-only audit log`
+### [x] C27 `feat(audit): add append-only audit log`
 
 - **Goal:** a compliance record that does not depend on Langfuse.
 - **Files:** migration for `audit_log`, `chatbot/src/chatbot/audit.py`.
@@ -360,20 +446,27 @@ real tracing, before making any single layer good.
   `chatbot_app` can insert only; a trigger rejects update and delete.
 - **Done when:** tests show inserts succeed and update or delete fails for
   every application role.
+- **Verification:** CLI integration tests read back the question, tool arguments and
+  returned project ID with tracing enabled and disabled. Postgres tests exercise
+  the application and reader grants and the owner-side mutation trigger.
 
-### [ ] C28 `feat(feedback): add thumbs up/down linked to traces`
+### [x] C28 `feat(feedback): add thumbs up/down linked to traces`
 
 - **Goal:** find bad answers quickly.
 - **Files:** migration for `feedback`, backend endpoint, UI buttons.
 - **Details:** rating and optional comment per turn, stored in Postgres and
   sent to Langfuse as a score on the turn's trace.
 - **Done when:** a thumbs-down in the UI appears on the trace in Langfuse.
+- **Verification:** a Streamlit test clicks thumbs-down against the real backend and
+  Postgres, then checks the score payload on the turn's trace (set
+  `VERIFY_LIVE_LANGFUSE=1` to read it back from Langfuse). Other tests cover owner
+  scoping, vote revision, and retry of pending scores after a restart.
 
 ---
 
 ## Phase 5: Quality loop (M5)
 
-### [ ] C29 `feat(evals): add eval dataset, runner and scorers`
+### [x] C29 `feat(evals): add eval dataset, runner and scorers`
 
 - **Goal:** measure answer quality, not guess it.
 - **Files:** `evals/pyproject.toml`, `evals/datasets/*.yaml`, `evals/runner.py`,
@@ -385,8 +478,12 @@ real tracing, before making any single layer good.
   latency. Results are written as JSON and Markdown and sent to Langfuse.
 - **Done when:** `uv run python -m evals.runner` prints a score table for the
   demo data.
+- **Verification:** a live run of the 21 demo cases on `openai:gpt-6-luna` printed
+  the table, wrote both reports and attached its scores to the Langfuse traces. The
+  same cases with a prompt that skips tools failed tool choice, retrieval, facts
+  and a refusal. Unit tests drive the runner with a scripted model, tool and judge.
 
-### [ ] C30 `ci(evals): run evals on prompt, tool and model changes`
+### [x] C30 `ci(evals): run evals on prompt, tool and model changes`
 
 - **Goal:** regressions are caught before merge.
 - **Files:** `.github/workflows/evals.yml`, `evals/baseline.json`.
@@ -394,8 +491,13 @@ real tracing, before making any single layer good.
   settings change. It fails if a score drops below the baseline by more than
   a set tolerance.
 - **Done when:** a deliberately worse prompt fails the pipeline.
+- **Verification:** the workflow's eval command passed against the baseline on unchanged
+  code. With the system prompt replaced by one that says never to admit a missing
+  answer, it exited 1: refusal fell from 1.00 to 0.50. Unit tests cover tolerances,
+  changed case counts, cost growth and baseline regeneration. The workflow has not
+  yet run on GitHub; it needs an `OPENAI_API_KEY` secret.
 
-### [ ] C31 `docs: add runbook, debugging guide and Langfuse self-hosting notes`
+### [x] C31 `docs: add runbook, debugging guide and Langfuse self-hosting notes`
 
 - **Goal:** someone else can run and debug the system.
 - **Files:** `docs/RUNBOOK.md`, `docs/DEBUGGING.md`, optional
@@ -405,6 +507,14 @@ real tracing, before making any single layer good.
   provider, a tool, a context strategy.
 - **Done when:** a new reader can go from clone to a debugged turn using only
   the docs.
+- **Verification:** the debugging guide's SQL ran against the local database for a
+  stored eval turn: turn and feedback, messages, audit rows, and the chunks a search
+  returned. `chatbot.cli replay --until` replayed that turn with the real model and
+  printed both answers with their trace IDs. Unit tests cover replay and the debug
+  request log, and the integration tests pass. The merged Compose config with
+  `docker-compose.langfuse.yml` validates, but its Langfuse images have not been
+  started here, and nobody new to the project has followed the runbook from a fresh
+  clone yet.
 
 ---
 

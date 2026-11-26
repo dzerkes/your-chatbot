@@ -1,0 +1,151 @@
+# Self-hosted Langfuse next to the chatbot, for local work or a single test VM.
+# Trimmed from Langfuse's own docker-compose.yml (github.com/langfuse/langfuse):
+# no AI gateway or media uploads, nothing published except the web UI, and
+# service names and variables prefixed so they do not clash with this repo's
+# Postgres. Setup and limits: docs/RUNBOOK.md#self-hosting-langfuse.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.langfuse.yml up -d
+#
+# Langfuse starts with one organization, project and user whose API keys are
+# LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY from .env, so the chatbot needs no
+# extra setup. Every secret below is required; generate them as the runbook says.
+
+x-langfuse-env: &langfuse-env
+  NEXTAUTH_URL: ${LANGFUSE_URL:-http://localhost:3000}
+  DATABASE_URL: postgresql://langfuse:${LANGFUSE_DB_PASSWORD:?Set LANGFUSE_DB_PASSWORD in .env}@langfuse-postgres:5432/langfuse
+  SALT: ${LANGFUSE_SALT:?Set LANGFUSE_SALT in .env}
+  ENCRYPTION_KEY: ${LANGFUSE_ENCRYPTION_KEY:?Set LANGFUSE_ENCRYPTION_KEY in .env (openssl rand -hex 32)}
+  TELEMETRY_ENABLED: "false"
+  CLICKHOUSE_MIGRATION_URL: clickhouse://langfuse-clickhouse:9000
+  CLICKHOUSE_URL: http://langfuse-clickhouse:8123
+  CLICKHOUSE_USER: langfuse
+  CLICKHOUSE_PASSWORD: ${LANGFUSE_CLICKHOUSE_PASSWORD:?Set LANGFUSE_CLICKHOUSE_PASSWORD in .env}
+  CLICKHOUSE_CLUSTER_ENABLED: "false"
+  REDIS_HOST: langfuse-redis
+  REDIS_PORT: 6379
+  REDIS_AUTH: ${LANGFUSE_REDIS_PASSWORD:?Set LANGFUSE_REDIS_PASSWORD in .env}
+  # Langfuse stages every ingested event in S3-compatible storage before ClickHouse.
+  LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+  LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+  LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: langfuse
+  LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${LANGFUSE_MINIO_PASSWORD:?Set LANGFUSE_MINIO_PASSWORD in .env}
+  LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+  LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+  LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
+
+x-langfuse-depends: &langfuse-depends
+  langfuse-postgres:
+    condition: service_healthy
+  langfuse-clickhouse:
+    condition: service_healthy
+  langfuse-redis:
+    condition: service_healthy
+  langfuse-minio:
+    condition: service_healthy
+
+services:
+  # Point the chatbot's own containers at this Langfuse. Host processes (CLI,
+  # evals, a backend run with uv) use LANGFUSE_HOST from .env instead.
+  backend:
+    environment:
+      LANGFUSE_HOST: http://langfuse-web:3000
+
+  langfuse-web:
+    image: docker.langfuse.com/langfuse/langfuse:${LANGFUSE_IMAGE_TAG:-4}
+    restart: unless-stopped
+    depends_on: *langfuse-depends
+    environment:
+      <<: *langfuse-env
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:?Set LANGFUSE_NEXTAUTH_SECRET in .env}
+      # Headless initialization: created on first start, left alone afterwards.
+      LANGFUSE_INIT_ORG_ID: your-chatbot
+      LANGFUSE_INIT_ORG_NAME: your-chatbot
+      LANGFUSE_INIT_PROJECT_ID: your-chatbot
+      LANGFUSE_INIT_PROJECT_NAME: your-chatbot
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:?Set LANGFUSE_PUBLIC_KEY in .env (for example pk-lf-local)}
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_SECRET_KEY:?Set LANGFUSE_SECRET_KEY in .env}
+      LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_ADMIN_EMAIL:-admin@example.com}
+      LANGFUSE_INIT_USER_NAME: Admin
+      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_ADMIN_PASSWORD:?Set LANGFUSE_ADMIN_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:${LANGFUSE_PORT:-3000}:3000"
+
+  langfuse-worker:
+    image: docker.langfuse.com/langfuse/langfuse-worker:${LANGFUSE_IMAGE_TAG:-4}
+    restart: unless-stopped
+    depends_on: *langfuse-depends
+    environment: *langfuse-env
+
+  langfuse-postgres:
+    image: docker.io/postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: ${LANGFUSE_DB_PASSWORD:?Set LANGFUSE_DB_PASSWORD in .env}
+      POSTGRES_DB: langfuse
+      TZ: UTC
+      PGTZ: UTC
+    volumes:
+      - langfuse_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse -d langfuse"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  langfuse-clickhouse:
+    image: docker.io/clickhouse/clickhouse-server:26.3.62.3
+    restart: unless-stopped
+    user: "101:101"
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: langfuse
+      CLICKHOUSE_PASSWORD: ${LANGFUSE_CLICKHOUSE_PASSWORD:?Set LANGFUSE_CLICKHOUSE_PASSWORD in .env}
+    volumes:
+      - langfuse_clickhouse_data:/var/lib/clickhouse
+      - langfuse_clickhouse_logs:/var/log/clickhouse-server
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 1s
+
+  langfuse-redis:
+    image: docker.io/redis:7
+    restart: unless-stopped
+    command: >
+      --requirepass ${LANGFUSE_REDIS_PASSWORD:?Set LANGFUSE_REDIS_PASSWORD in .env}
+      --maxmemory-policy noeviction
+    volumes:
+      - langfuse_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${LANGFUSE_REDIS_PASSWORD}", "--no-auth-warning", "ping"]
+      interval: 3s
+      timeout: 10s
+      retries: 10
+
+  langfuse-minio:
+    image: cgr.dev/chainguard/minio
+    restart: unless-stopped
+    entrypoint: sh
+    # Create the bucket before the server starts.
+    command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
+    environment:
+      MINIO_ROOT_USER: langfuse
+      MINIO_ROOT_PASSWORD: ${LANGFUSE_MINIO_PASSWORD:?Set LANGFUSE_MINIO_PASSWORD in .env}
+    volumes:
+      - langfuse_minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 1s
+      timeout: 5s
+      retries: 5
+      start_period: 1s
+
+volumes:
+  langfuse_postgres_data:
+  langfuse_clickhouse_data:
+  langfuse_clickhouse_logs:
+  langfuse_redis_data:
+  langfuse_minio_data:

@@ -73,6 +73,7 @@ To keep providers pluggable, the rest of the code talks to one interface:
 ```python
 class LLMProvider(Protocol):
     name: str
+
     def stream(self, request: LLMRequest) -> AsyncIterator[LLMEvent]: ...
 ```
 
@@ -83,10 +84,12 @@ line in the registry.
 
 ### 3.2 LLM gateway
 
-The gateway is an in-process wrapper around providers. It owns the fallback
-chain, retries with backoff, timeouts, and cost calculation from a price table.
-It implements the same `LLMProvider` interface, so the agent does not know
-whether it is talking to one provider or to a chain.
+The gateway implements `LLMProvider` around an ordered chain of adapters.
+It retries transient errors with capped exponential backoff and jitter before
+trying the next model. Each SDK enforces the request timeout. After the first
+text, tool call or final usage event reaches the agent, a failure ends the stream.
+The gateway prices the usage from the model that served each call. The agent
+sums those amounts across tool steps and summary calls into the stored turn.
 
 A LiteLLM proxy can be added later as just another adapter, when several teams
 or apps share LLM access.
@@ -105,6 +108,16 @@ Tool rules:
 - All data tools are read-only. The only write tool is memory (section 3.7).
 - The user's identity comes from the server side of the session and is passed
   to tools in a `ToolContext`. The model can never set or change it.
+
+How it runs (C22): the `mcp` service (`mcp_servers/data_server.py`) serves the
+same `Tool` objects the chatbot can run in-process, over streamable HTTP, in
+stateless mode. `TOOLS_TRANSPORT` picks in-process (CLI default) or MCP
+(Compose). Across the boundary, the backend signs a short-lived HS256 token per
+call with the user's id, groups, session, turn and trace id, using a secret
+shared with the server (`MCP_TOKEN_SECRET`). The server verifies it before any
+MCP message is handled and builds `ToolContext` only from it. In Compose only
+the MCP server holds the read-only database role and loads the models; the
+backend holds neither.
 
 ### 3.4 SQL: a read-only role over curated views, not raw tables
 
@@ -161,9 +174,25 @@ each turn by a context strategy:
 | `compact_tools` | Replaces old tool results with a one-line note. |
 | `summary` | Summarizes older turns once past a threshold, stores the summary on the session, sends summary plus recent turns. |
 
-Strategies are composable and chosen by configuration. Summaries are made in
+Strategies are composable and chosen by configuration
+(`CONTEXT_STRATEGY=summary,compact_tools`, the default). Summaries are made in
 occasional large steps, not every turn, so the prompt prefix stays stable and
-prompt caching keeps working.
+prompt caching keeps working:
+
+- `compact_tools` compacts every earlier turn, not only old ones, so a turn's
+  compacted form never changes once it is history. The turn in progress keeps
+  full results.
+- `summary` folds all but the last `CONTEXT_KEEP_LAST_TURNS` turns into the
+  summary when `CONTEXT_SUMMARY_TRIGGER_TURNS` more have piled up, or earlier
+  when the context passes 80% of `CONTEXT_MAX_INPUT_TOKENS`. The summary goes in
+  as the first user/assistant exchange, after the system prompt and tools, so
+  updating it does not invalidate their cache. The summarizer reads compacted
+  turns, so retrieved text never reaches it.
+- A final guard drops the oldest turns if the budget is still exceeded.
+- Caching: Anthropic gets cache breakpoints after the tools, the system prompt
+  and the conversation so far; OpenAI caches automatically and gets the
+  session id as `prompt_cache_key`. Token estimates count tool results as
+  sent, wrapped as untrusted data.
 
 ### 3.7 Memory
 
@@ -171,6 +200,17 @@ Cross-session facts about the user, exposed to the model as a small read/write
 tool. Off by default (`MEMORY_ENABLED=false`) and built late, because many
 enterprise bots do not need it at first. Facts are visible to and deletable by
 the user.
+
+How it works (C24): one `memory` tool with `remember`, `recall` and `forget`,
+scoped to the user in `ToolContext`. `remember` must quote the user's own
+words, and the tool checks the quote against what the user typed in the
+session (the current message, passed by the agent, and stored user messages),
+so text from documents or tool results can never become a memory. Up to
+`MEMORY_CONTEXT_FACTS` recent facts are added to the system prompt each turn as
+data. The table has no UPDATE grant: facts are added and forgotten, not edited.
+The tool runs in the chatbot process on the application role, also when the
+data tools run over MCP, so the MCP server stays read-only. Users see and
+delete facts in the UI panel or through `GET/DELETE /memories`.
 
 ### 3.8 Tracing and audit
 
@@ -198,18 +238,29 @@ update or delete.
 | `chatbot_app` | Read/write history and memory, insert audit rows | `chatbot` package |
 | `chatbot_ro` | `SELECT` on `curated` views and RAG tables | Tools |
 
+These are non-superuser application roles. Compose initializes them using the
+image's separate `postgres` bootstrap superuser. Public database privileges
+(including temporary table creation) are revoked in the application database;
+object grants are added by migrations. The tool role has a five-second
+statement timeout.
+
 ### 3.10 Prompt injection
 
 Retrieved documents are data, not instructions. Defenses, in layers:
 
-- Tool results are wrapped and labeled as untrusted content, and the system
-  prompt tells the model to never follow instructions found inside them.
+- Before each model call, tool results are cleaned and wrapped in an
+  `untrusted_data` JSON envelope (`chatbot/safety.py`), and the system prompt
+  tells the model to never follow instructions found inside it. Cleaning drops
+  invisible characters used to hide instructions (zero-width, bidirectional
+  overrides, Unicode tag characters) and replaces images. Stored history keeps
+  the original results.
 - Data tools are read-only, so a successful injection cannot change data.
 - User identity and permissions are enforced outside the model.
 - The UI does not load remote images or auto-follow links from model output,
   which closes the usual data-exfiltration channel.
-- The eval set contains documents with injected instructions, so regressions
-  are caught.
+- The seed documents include injected instructions, and opt-in `llm` tests
+  check that defended models ignore them while an undefended small model does
+  not, so the tests stay meaningful.
 
 ## 4. Software design patterns
 
@@ -235,4 +286,7 @@ own sake.
 - A scripted fake provider makes agent tests deterministic and free.
 - Typed errors (`ToolError`, `ProviderError`, `ContextOverflow`, ...) instead
   of bare exceptions, each recorded on the span where it happened.
-- A session can be replayed from the database against any provider or prompt.
+- A session can be replayed from the database against any provider or prompt
+  (`python -m chatbot.cli replay`).
+- [DEBUGGING.md](DEBUGGING.md) follows one bad answer through all of these, and
+  [RUNBOOK.md](RUNBOOK.md) covers operation and Langfuse self-hosting.

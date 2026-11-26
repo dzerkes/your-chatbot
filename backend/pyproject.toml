@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling>=1.26,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "chatbot-backend"
+version = "0.1.0"
+description = "FastAPI transport for the provider-neutral chatbot core."
+requires-python = ">=3.12"
+dependencies = [
+    "chatbot[local-embeddings]",  # search_docs embeds queries and reranks locally
+    "fastapi>=0.115,<1",
+    "uvicorn>=0.30,<1",
+    "anyio>=4,<5",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.uv]
+# Rebuild this package when its sources change, not only its pyproject.toml.
+# Without this, Docker builds that share uv's cache installed stale code.
+cache-keys = [{ file = "pyproject.toml" }, { file = "app/**/*" }]

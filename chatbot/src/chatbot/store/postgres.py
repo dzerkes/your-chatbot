@@ -1,0 +1,370 @@
+"""Async Postgres history store; all production history SQL lives here."""
+
+# Cursor and transaction contexts depend on the acquired connection.
+# ruff: noqa: SIM117
+
+from collections.abc import Sequence
+from typing import Self
+from uuid import UUID
+
+from psycopg import errors
+from psycopg.conninfo import make_conninfo
+from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
+from psycopg_pool import AsyncConnectionPool
+
+from chatbot.config import Settings
+from chatbot.errors import ConflictError, NotFoundError
+from chatbot.feedback import Feedback, FeedbackInput, SendScore
+from chatbot.limits import ChatLimits, window_starts
+from chatbot.store.base import Session, Turn, validate_turn_messages
+from chatbot.types import Message, User
+
+
+class PostgresStore:
+    """Use with ``async with``; the pool connects as chatbot_app only."""
+
+    def __init__(self, settings: Settings) -> None:
+        self._pool = AsyncConnectionPool(
+            conninfo=make_conninfo(
+                host=settings.postgres_host,
+                port=settings.postgres_port,
+                dbname=settings.postgres_db,
+                user=settings.app_db_user,
+                password=settings.app_db_password.get_secret_value(),
+            ),
+            min_size=1,
+            max_size=10,
+            open=False,
+        )
+
+    async def __aenter__(self) -> Self:
+        await self._pool.open(wait=True)
+        return self
+
+    @property
+    def pool(self) -> AsyncConnectionPool:
+        """The application-role pool, shared with stores for other app-owned tables."""
+        return self._pool
+
+    async def __aexit__(self, _exc_type: object, _exc: object, _tb: object) -> None:
+        await self._pool.close()
+
+    async def upsert_user(self, user: User) -> User:
+        try:
+            async with self._pool.connection() as conn:
+                async with conn.cursor(row_factory=dict_row) as cursor:
+                    await cursor.execute(
+                        """
+                        INSERT INTO users (id, external_id, display_name, groups)
+                        VALUES (%s, %s, %s, %s)
+                        ON CONFLICT (external_id) DO UPDATE
+                        SET display_name = EXCLUDED.display_name, groups = EXCLUDED.groups
+                        RETURNING id, external_id, display_name, groups
+                        """,
+                        (user.id, user.external_id, user.display_name, user.groups),
+                    )
+                    row = await cursor.fetchone()
+                    assert row is not None
+                    return User.model_validate(row)
+        except errors.UniqueViolation as exc:
+            raise ConflictError("User ID already exists") from exc
+
+    async def create_session(self, owner_id: UUID, title: str | None = None) -> Session:
+        session = Session(owner_id=owner_id, title=title)
+        try:
+            async with self._pool.connection() as conn:
+                async with conn.cursor(row_factory=dict_row) as cursor:
+                    await cursor.execute(
+                        """
+                        INSERT INTO sessions (id, owner_id, title, summary, created_at, updated_at)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                        RETURNING id, owner_id, title, summary,
+                        summary_through_sequence, summary_updated_at, created_at, updated_at
+                        """,
+                        (
+                            session.id,
+                            session.owner_id,
+                            session.title,
+                            session.summary,
+                            session.created_at,
+                            session.updated_at,
+                        ),
+                    )
+                    row = await cursor.fetchone()
+                    assert row is not None
+                    return Session.model_validate(row)
+        except errors.ForeignKeyViolation as exc:
+            raise NotFoundError("User not found") from exc
+
+    async def get_session(self, session_id: UUID, owner_id: UUID) -> Session | None:
+        async with self._pool.connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cursor:
+                await cursor.execute(
+                    """
+                    SELECT id, owner_id, title, summary,
+                        summary_through_sequence, summary_updated_at, created_at, updated_at
+                    FROM sessions WHERE id = %s AND owner_id = %s
+                    """,
+                    (session_id, owner_id),
+                )
+                row = await cursor.fetchone()
+                return Session.model_validate(row) if row is not None else None
+
+    async def list_sessions(self, owner_id: UUID) -> list[Session]:
+        async with self._pool.connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cursor:
+                await cursor.execute(
+                    """
+                    SELECT id, owner_id, title, summary,
+                        summary_through_sequence, summary_updated_at, created_at, updated_at
+                    FROM sessions WHERE owner_id = %s ORDER BY updated_at DESC, id DESC
+                    """,
+                    (owner_id,),
+                )
+                return [Session.model_validate(row) for row in await cursor.fetchall()]
+
+    async def update_session(self, session: Session) -> Session:
+        async with self._pool.connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cursor:
+                await cursor.execute(
+                    """
+                    UPDATE sessions SET title = %s, updated_at = now()
+                    WHERE id = %s AND owner_id = %s
+                    RETURNING id, owner_id, title, summary,
+                        summary_through_sequence, summary_updated_at, created_at, updated_at
+                    """,
+                    (session.title, session.id, session.owner_id),
+                )
+                row = await cursor.fetchone()
+                if row is None:
+                    raise NotFoundError("Session not found")
+                return Session.model_validate(row)
+
+    async def update_summary(
+        self, session_id: UUID, owner_id: UUID, summary: str, through_sequence: int
+    ) -> Session:
+        async with self._pool.connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cursor:
+                await cursor.execute(
+                    """
+                    UPDATE sessions
+                    SET summary = %s, summary_through_sequence = %s, summary_updated_at = now()
+                    WHERE id = %s AND owner_id = %s
+                      AND (summary_through_sequence IS NULL OR summary_through_sequence < %s)
+                    RETURNING id, owner_id, title, summary, summary_through_sequence,
+                        summary_updated_at, created_at, updated_at
+                    """,
+                    (summary, through_sequence, session_id, owner_id, through_sequence),
+                )
+                row = await cursor.fetchone()
+                if row is not None:
+                    return Session.model_validate(row)
+        # Not found, or a concurrent turn already stored a newer summary: return what is stored.
+        current = await self.get_session(session_id, owner_id)
+        if current is None:
+            raise NotFoundError("Session not found")
+        return current
+
+    async def reserve_turn(self, turn: Turn, owner_id: UUID, limits: ChatLimits) -> None:
+        async with self._pool.connection() as conn:
+            # Serialize admission across this owner's sessions and API workers.
+            owner = await conn.execute(
+                """
+                SELECT u.id FROM users u JOIN sessions s ON s.owner_id = u.id
+                WHERE u.id = %s AND s.id = %s FOR UPDATE OF u
+                """,
+                (owner_id, turn.session_id),
+            )
+            if await owner.fetchone() is None:
+                raise NotFoundError("Session not found")
+            minute, midnight = window_starts(turn.created_at)
+            cursor = await conn.execute(
+                """
+                SELECT count(*) FILTER (WHERE t.created_at > %s),
+                       coalesce(sum(t.cost_usd) FILTER (WHERE t.created_at >= %s), 0)
+                FROM turns t JOIN sessions s ON t.session_id = s.id
+                WHERE s.owner_id = %s AND t.created_at >= %s
+                """,
+                (minute, midnight, owner_id, min(minute, midnight)),
+            )
+            row = await cursor.fetchone()
+            assert row is not None
+            limits.check(*row)
+            inserted = await conn.execute(
+                """
+                INSERT INTO turns (id, session_id, status, trace_id, created_at)
+                SELECT %s, id, 'running', %s, %s FROM sessions WHERE id = %s AND owner_id = %s
+                """,
+                (turn.id, turn.trace_id, turn.created_at, turn.session_id, owner_id),
+            )
+            if not inserted.rowcount:
+                raise NotFoundError("Session not found")
+
+    async def save_turn(self, turn: Turn, messages: Sequence[Message], owner_id: UUID) -> None:
+        validate_turn_messages(turn, messages)
+        try:
+            async with self._pool.connection() as conn:
+                # A failure anywhere below rolls back the turn and every message.
+                async with conn.transaction():
+                    cursor = await conn.execute(
+                        """
+                        INSERT INTO turns (
+                            id, session_id, status, trace_id, input_tokens, output_tokens,
+                            cache_read_input_tokens, cache_creation_input_tokens,
+                            cost_usd, latency_ms, created_at, updated_at, completed_at
+                        )
+                        SELECT %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                        FROM sessions WHERE id = %s AND owner_id = %s
+                        ON CONFLICT (id) DO UPDATE SET
+                            status = excluded.status, trace_id = excluded.trace_id,
+                            input_tokens = excluded.input_tokens,
+                            output_tokens = excluded.output_tokens,
+                            cache_read_input_tokens = excluded.cache_read_input_tokens,
+                            cache_creation_input_tokens = excluded.cache_creation_input_tokens,
+                            cost_usd = excluded.cost_usd, latency_ms = excluded.latency_ms,
+                            updated_at = excluded.updated_at, completed_at = excluded.completed_at
+                        WHERE turns.status = 'running' AND turns.session_id = excluded.session_id
+                          AND excluded.status IN ('completed', 'failed')
+                        RETURNING id
+                        """,
+                        (
+                            turn.id,
+                            turn.session_id,
+                            turn.status,
+                            turn.trace_id,
+                            turn.input_tokens,
+                            turn.output_tokens,
+                            turn.cache_read_input_tokens,
+                            turn.cache_creation_input_tokens,
+                            turn.cost_usd,
+                            turn.latency_ms,
+                            turn.created_at,
+                            turn.updated_at,
+                            turn.completed_at,
+                            turn.session_id,
+                            owner_id,
+                        ),
+                    )
+                    if await cursor.fetchone() is None:
+                        owned = await conn.execute(
+                            "SELECT id FROM sessions WHERE id=%s AND owner_id=%s",
+                            (turn.session_id, owner_id),
+                        )
+                        if await owned.fetchone():
+                            raise ConflictError("Turn already exists")
+                        raise NotFoundError("Session not found")
+                    for message in messages:
+                        await conn.execute(
+                            """
+                            INSERT INTO messages (
+                                id, session_id, turn_id, sequence, role,
+                                content, model, usage, created_at
+                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            """,
+                            (
+                                message.id,
+                                message.session_id,
+                                message.turn_id,
+                                message.sequence,
+                                message.role,
+                                Jsonb([block.model_dump(mode="json") for block in message.content]),
+                                message.model,
+                                Jsonb(message.usage.model_dump(mode="json"))
+                                if message.usage is not None
+                                else None,
+                                message.created_at,
+                            ),
+                        )
+                    await conn.execute(
+                        "UPDATE sessions SET updated_at = now() WHERE id = %s",
+                        (turn.session_id,),
+                    )
+        except errors.UniqueViolation as exc:
+            raise ConflictError("Turn or message already exists") from exc
+
+    async def save_feedback(
+        self, session_id: UUID, turn_id: UUID, owner_id: UUID, value: FeedbackInput, *, export: bool
+    ) -> Feedback:
+        async with self._pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            await cur.execute(
+                """
+                WITH target AS (
+                    SELECT t.id, t.trace_id FROM turns t JOIN sessions s ON s.id=t.session_id
+                    WHERE s.id=%s AND s.owner_id=%s AND t.id=%s
+                      AND t.status IN ('completed','failed')
+                ), saved AS (
+                    INSERT INTO feedback (turn_id, rating, comment, next_export_at)
+                    SELECT id, %s, %s, CASE WHEN %s AND trace_id IS NOT NULL THEN now() END
+                    FROM target
+                    ON CONFLICT (turn_id) DO UPDATE SET rating=excluded.rating,
+                        comment=excluded.comment, next_export_at=excluded.next_export_at
+                    RETURNING turn_id, rating, comment, created_at
+                )
+                SELECT saved.*, target.trace_id FROM saved JOIN target ON target.id=saved.turn_id
+                """,
+                (session_id, owner_id, turn_id, value.rating, value.comment, export),
+            )
+            row = await cur.fetchone()
+            if row is None:
+                raise NotFoundError("Turn not found")
+            return Feedback.model_validate(row)
+
+    async def list_feedback(self, session_id: UUID, owner_id: UUID) -> list[Feedback]:
+        async with self._pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            await cur.execute(
+                """
+                SELECT f.turn_id, f.rating, f.comment, f.created_at, t.trace_id FROM feedback f
+                JOIN turns t ON t.id=f.turn_id JOIN sessions s ON s.id=t.session_id
+                WHERE s.id=%s AND s.owner_id=%s
+            """,
+                (session_id, owner_id),
+            )
+            return [Feedback.model_validate(row) for row in await cur.fetchall()]
+
+    async def export_next_feedback(self, send: SendScore) -> bool:
+        async with self._pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            # Hold only the selected feedback row while delivering its current revision.
+            await cur.execute("""
+                SELECT f.turn_id, f.rating, f.comment, f.created_at, t.trace_id FROM feedback f
+                JOIN turns t ON t.id=f.turn_id WHERE f.next_export_at <= now()
+                ORDER BY f.next_export_at LIMIT 1 FOR UPDATE OF f SKIP LOCKED
+            """)
+            row = await cur.fetchone()
+            if row is None:
+                return False
+            delivered = await send(Feedback.model_validate(row))
+            await cur.execute(
+                """UPDATE feedback SET next_export_at =
+                CASE WHEN %s THEN NULL ELSE now() + interval '1 minute' END WHERE turn_id=%s""",
+                (delivered != "retry", row["turn_id"]),
+            )
+            return True
+
+    async def list_turns(self, session_id: UUID, owner_id: UUID) -> list[Turn]:
+        async with self._pool.connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cursor:
+                await cursor.execute(
+                    """
+                    SELECT t.* FROM turns AS t
+                    JOIN sessions AS s ON s.id = t.session_id
+                    WHERE t.session_id = %s AND s.owner_id = %s
+                    ORDER BY t.created_at, t.id
+                    """,
+                    (session_id, owner_id),
+                )
+                return [Turn.model_validate(row) for row in await cursor.fetchall()]
+
+    async def list_messages(self, session_id: UUID, owner_id: UUID) -> list[Message]:
+        async with self._pool.connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cursor:
+                await cursor.execute(
+                    """
+                    SELECT m.* FROM messages AS m
+                    JOIN sessions AS s ON s.id = m.session_id
+                    WHERE m.session_id = %s AND s.owner_id = %s
+                    ORDER BY m.sequence
+                    """,
+                    (session_id, owner_id),
+                )
+                return [Message.model_validate(row) for row in await cursor.fetchall()]
