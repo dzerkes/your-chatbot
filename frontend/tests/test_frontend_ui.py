@@ -22,6 +22,7 @@ class FakeApi:
         self.failure: str | None = None
         self.memory_enabled = False  # the server default
         self.memories: dict[str, list[dict[str, Any]]] = {"alice": [], "bob": []}
+        self.feedback: dict[str, dict[str, dict[str, Any]]] = {}
 
     def request(self, request: httpx.Request) -> httpx.Response:
         owner = {"Bearer alice-token": "alice", "Bearer bob-token": "bob"}.get(
@@ -62,8 +63,18 @@ class FakeApi:
             return httpx.Response(404)
         if request.method == "GET":
             return httpx.Response(
-                200, json={**self.sessions[session_id], "messages": self.messages[session_id]}
+                200,
+                json={
+                    **self.sessions[session_id],
+                    "messages": self.messages[session_id],
+                    "feedback": list(self.feedback.get(session_id, {}).values()),
+                },
             )
+        if request.method == "PUT":
+            turn_id = request.url.path.split("/")[4]
+            vote = {"turn_id": turn_id, "comment": None, **json.loads(request.content)}
+            self.feedback.setdefault(session_id, {})[turn_id] = vote
+            return httpx.Response(200, json=vote)
         prompt = json.loads(request.content)["message"]
         self.prompts.append(prompt)
         turn_id, call_id = str(uuid4()), "call-" + str(uuid4())
@@ -225,3 +236,27 @@ def test_limit_message_is_visible_after_rerun(service: FakeApi) -> None:
     app.chat_input[0].set_value("Hi").run()
     assert any("after midnight UTC" in error.value for error in app.error)
     assert service.prompts == ["Hi"]
+
+
+def test_thumbs_down_with_comment_is_saved_and_shown_after_reload(service: FakeApi) -> None:
+    app = AppTest.from_file(str(APP), default_timeout=10).run()
+    app.text_input(key="access_token").set_value("alice-token").run()
+    app.chat_input[0].set_value("Which projects are active?").run()
+    next(w for w in app.text_input if w.label == "Optional feedback").set_value("Out of date")
+    next(b for b in app.button if b.label == "👎").click().run()
+    assert not app.exception and not app.error
+    session_id = str(app.query_params["session"])
+    (vote,) = service.feedback[session_id].values()
+    assert vote["rating"] == "down" and vote["comment"] == "Out of date"
+    assert vote["turn_id"] == service.messages[session_id][0]["turn_id"]
+
+    reloaded = AppTest.from_file(str(APP), default_timeout=10)
+    reloaded.query_params["session"] = session_id
+    reloaded.run()
+    reloaded.text_input(key="access_token").set_value("alice-token").run()
+    down = next(b for b in reloaded.button if b.label == "👎")
+    up = next(b for b in reloaded.button if b.label == "👍")
+    assert down.proto.type == "primary" and up.proto.type == "secondary"
+    assert next(w for w in reloaded.text_input if w.label == "Optional feedback").value == (
+        "Out of date"
+    )

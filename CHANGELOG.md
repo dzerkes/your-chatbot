@@ -14,7 +14,9 @@ All important changes to this project are recorded here, newest first.
 
 | Plan id | Commit | Type | Change |
 |---|---|---|---|
-| C27 | Pending | Added | Postgres records each admitted turn and executed tool call, including the question, arguments, outcome and returned source identifiers. The application can append records. A database trigger rejects updates, deletes and truncation. |
+| C28 | Pending | Added | Thumbs up/down with an optional comment under each answer, via `PUT /sessions/{id}/turns/{turn_id}/feedback`. One current vote per turn is stored in the `feedback` table and returned with the session, so the UI shows it after a reload. |
+| C28 | Pending | Added | With tracing enabled, each vote is sent to Langfuse as a boolean `user-feedback` score on the turn's trace. A background exporter retries failed deliveries from Postgres every minute, and a revised vote replaces the earlier score because the score ID is the turn ID. |
+| C27 | `d308473` | Added | Postgres records each admitted turn and executed tool call, including the question, arguments, outcome and returned source identifiers. The application can append records. A database trigger rejects updates, deletes and truncation. |
 
 ### 2026-11-25
 

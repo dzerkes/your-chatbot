@@ -139,3 +139,15 @@ and the read-only tool role has no access. The owner can inspect a turn with
 `SELECT * FROM audit_log WHERE turn_id = $1 ORDER BY id`. A trigger rejects
 updates, deletes and truncation, including ordinary owner-issued statements.
 Audit IDs have no cascading references to mutable history tables.
+
+## Feedback
+
+`feedback` holds the user's current rating (`up` or `down`) and optional comment
+for a completed or failed turn. A new vote on the same turn replaces the rating
+and comment and keeps the original `created_at`. The application role can
+select, insert and update rows. Rows are deleted with their turn.
+
+`next_export_at` is set when a vote still has to reach Langfuse and cleared once
+Langfuse accepts or rejects it. To find bad answers, the owner can run
+`SELECT f.*, t.trace_id FROM feedback f JOIN turns t ON t.id = f.turn_id
+WHERE f.rating = 'down' ORDER BY f.created_at DESC`.
