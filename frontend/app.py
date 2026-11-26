@@ -10,7 +10,7 @@ from uuid import UUID
 import streamlit as st
 from pydantic import JsonValue, ValidationError
 
-from frontend.api_client import ApiClient, ApiError, ChatMessage
+from frontend.api_client import ApiClient, ApiError, SessionDetail, TurnFeedback
 from frontend.config import FrontendSettings
 from frontend.rendering import without_images
 
@@ -46,8 +46,39 @@ def _show_tool(name: str, result: dict[str, JsonValue]) -> None:
         st.caption(detail)
 
 
-def render_history(messages: list[ChatMessage]) -> None:
-    for _turn_id, grouped in groupby(messages, key=lambda message: message.turn_id):
+def _rate_answer(
+    client: ApiClient, session_id: UUID, turn_id: UUID, saved: TurnFeedback | None
+) -> None:
+    with st.form(f"feedback-{turn_id}", border=False):
+        comment = st.text_input(
+            "Optional feedback",
+            value=(saved.comment or "") if saved else "",
+            max_chars=2000,
+            key=f"comment-{turn_id}",
+        )
+        left, right, _ = st.columns([1, 1, 8])
+        up = left.form_submit_button(
+            "👍",
+            help="Helpful answer",
+            type="primary" if saved and saved.rating == "up" else "secondary",
+        )
+        down = right.form_submit_button(
+            "👎",
+            help="Unhelpful answer",
+            type="primary" if saved and saved.rating == "down" else "secondary",
+        )
+    if up or down:
+        try:
+            client.rate_turn(session_id, turn_id, "up" if up else "down", comment)
+        except ApiError as exc:
+            st.error(str(exc))
+        else:
+            st.rerun()
+
+
+def render_history(client: ApiClient, detail: SessionDetail) -> None:
+    feedback = {vote.turn_id: vote for vote in detail.feedback}
+    for turn_id, grouped in groupby(detail.messages, key=lambda message: message.turn_id):
         turn = list(grouped)
         for message in turn:
             if message.role == "user":
@@ -74,6 +105,11 @@ def render_history(messages: list[ChatMessage]) -> None:
                         names[str(block.get("id"))] = str(block.get("name", "tool"))
                     elif block.get("type") == "tool_result":
                         _show_tool(names.get(str(block.get("tool_use_id")), "tool"), block)
+            if any(
+                m.role == "assistant" and any(b.get("type") == "text" for b in m.content)
+                for m in turn
+            ):
+                _rate_answer(client, detail.id, turn_id, feedback.get(turn_id))
 
 
 def stream_reply(client: ApiClient, session_id: UUID, prompt: str) -> tuple[bool, str | None]:
@@ -224,7 +260,7 @@ def main() -> None:
                 if exc.status_code == 404:
                     _select(None)
                 st.stop()
-            render_history(detail.messages)
+            render_history(client, detail)
         else:
             st.info("Start a new conversation, or reopen one from the sidebar.")
         notice = st.session_state.get("turn_error")

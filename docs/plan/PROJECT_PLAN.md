@@ -450,13 +450,17 @@ real tracing, before making any single layer good.
   returned project ID with tracing enabled and disabled. Postgres tests exercise
   the application and reader grants and the owner-side mutation trigger.
 
-### [ ] C28 `feat(feedback): add thumbs up/down linked to traces`
+### [x] C28 `feat(feedback): add thumbs up/down linked to traces`
 
 - **Goal:** find bad answers quickly.
 - **Files:** migration for `feedback`, backend endpoint, UI buttons.
 - **Details:** rating and optional comment per turn, stored in Postgres and
   sent to Langfuse as a score on the turn's trace.
 - **Done when:** a thumbs-down in the UI appears on the trace in Langfuse.
+- **Verification:** a Streamlit test clicks thumbs-down against the real backend and
+  Postgres, then checks the score payload on the turn's trace (set
+  `VERIFY_LIVE_LANGFUSE=1` to read it back from Langfuse). Other tests cover owner
+  scoping, vote revision, and retry of pending scores after a restart.
 
 ---
 

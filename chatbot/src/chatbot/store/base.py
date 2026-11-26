@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 
 from pydantic import AwareDatetime, Field, NonNegativeInt
 
+from chatbot.feedback import Feedback, FeedbackInput, SendScore
 from chatbot.limits import ChatLimits
 from chatbot.types import DomainModel, Message, User
 
@@ -81,6 +82,15 @@ class MessageStore(Protocol):
 
 class HistoryStore(SessionStore, MessageStore, Protocol):
     """A store that provides both session and turn/message operations."""
+
+    async def save_feedback(
+        self, session_id: UUID, turn_id: UUID, owner_id: UUID, value: FeedbackInput, *, export: bool
+    ) -> Feedback: ...
+
+    async def list_feedback(self, session_id: UUID, owner_id: UUID) -> list[Feedback]: ...
+
+    async def export_next_feedback(self, send: SendScore) -> bool:
+        """Deliver one due score, returning whether a row was processed."""
 
 
 def validate_turn_messages(turn: Turn, messages: Sequence[Message]) -> None:

@@ -2,11 +2,12 @@
 
 import asyncio
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
 from chatbot.errors import ConflictError, NotFoundError
+from chatbot.feedback import Feedback, FeedbackInput, SendScore
 from chatbot.limits import ChatLimits, window_starts
 from chatbot.store.base import Session, Turn, validate_turn_messages
 from chatbot.types import Message, User
@@ -20,6 +21,8 @@ class MemoryStore:
         self._sessions: dict[UUID, Session] = {}
         self._turns: dict[UUID, Turn] = {}
         self._messages: dict[UUID, list[Message]] = {}
+        self._feedback: dict[UUID, Feedback] = {}
+        self._pending_scores: dict[UUID, datetime] = {}
         self._message_ids: set[UUID] = set()
 
     async def upsert_user(self, user: User) -> User:
@@ -128,6 +131,48 @@ class MemoryStore:
             self._sessions[turn.session_id] = session.model_copy(
                 update={"updated_at": datetime.now(UTC)}
             )
+
+    async def save_feedback(
+        self, session_id: UUID, turn_id: UUID, owner_id: UUID, value: FeedbackInput, *, export: bool
+    ) -> Feedback:
+        async with self._lock:
+            turn = self._turns.get(turn_id)
+            if (
+                turn is None
+                or turn.session_id != session_id
+                or self._sessions[session_id].owner_id != owner_id
+                or turn.status not in {"completed", "failed"}
+            ):
+                raise NotFoundError("Turn not found")
+            previous = self._feedback.get(turn_id)
+            feedback = Feedback(
+                **value.model_dump(),
+                turn_id=turn.id,
+                trace_id=turn.trace_id,
+                created_at=previous.created_at if previous else datetime.now(UTC),
+            )
+            self._feedback[turn_id] = feedback
+            if export and turn.trace_id:
+                self._pending_scores[turn_id] = datetime.now(UTC)
+            else:
+                self._pending_scores.pop(turn_id, None)
+            return feedback.model_copy()
+
+    async def list_feedback(self, session_id: UUID, owner_id: UUID) -> list[Feedback]:
+        turns = await self.list_turns(session_id, owner_id)
+        return [self._feedback[t.id].model_copy() for t in turns if t.id in self._feedback]
+
+    async def export_next_feedback(self, send: SendScore) -> bool:
+        async with self._lock:
+            now = datetime.now(UTC)
+            for turn_id, due in self._pending_scores.items():
+                if due <= now:
+                    if await send(self._feedback[turn_id]) != "retry":
+                        del self._pending_scores[turn_id]
+                    else:
+                        self._pending_scores[turn_id] = now + timedelta(minutes=1)
+                    return True
+            return False
 
     async def list_turns(self, session_id: UUID, owner_id: UUID) -> list[Turn]:
         session = self._sessions.get(session_id)

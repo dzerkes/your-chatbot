@@ -15,6 +15,7 @@ from psycopg_pool import AsyncConnectionPool
 
 from chatbot.config import Settings
 from chatbot.errors import ConflictError, NotFoundError
+from chatbot.feedback import Feedback, FeedbackInput, SendScore
 from chatbot.limits import ChatLimits, window_starts
 from chatbot.store.base import Session, Turn, validate_turn_messages
 from chatbot.types import Message, User
@@ -281,6 +282,64 @@ class PostgresStore:
                     )
         except errors.UniqueViolation as exc:
             raise ConflictError("Turn or message already exists") from exc
+
+    async def save_feedback(
+        self, session_id: UUID, turn_id: UUID, owner_id: UUID, value: FeedbackInput, *, export: bool
+    ) -> Feedback:
+        async with self._pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            await cur.execute(
+                """
+                WITH target AS (
+                    SELECT t.id, t.trace_id FROM turns t JOIN sessions s ON s.id=t.session_id
+                    WHERE s.id=%s AND s.owner_id=%s AND t.id=%s
+                      AND t.status IN ('completed','failed')
+                ), saved AS (
+                    INSERT INTO feedback (turn_id, rating, comment, next_export_at)
+                    SELECT id, %s, %s, CASE WHEN %s AND trace_id IS NOT NULL THEN now() END
+                    FROM target
+                    ON CONFLICT (turn_id) DO UPDATE SET rating=excluded.rating,
+                        comment=excluded.comment, next_export_at=excluded.next_export_at
+                    RETURNING turn_id, rating, comment, created_at
+                )
+                SELECT saved.*, target.trace_id FROM saved JOIN target ON target.id=saved.turn_id
+                """,
+                (session_id, owner_id, turn_id, value.rating, value.comment, export),
+            )
+            row = await cur.fetchone()
+            if row is None:
+                raise NotFoundError("Turn not found")
+            return Feedback.model_validate(row)
+
+    async def list_feedback(self, session_id: UUID, owner_id: UUID) -> list[Feedback]:
+        async with self._pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            await cur.execute(
+                """
+                SELECT f.turn_id, f.rating, f.comment, f.created_at, t.trace_id FROM feedback f
+                JOIN turns t ON t.id=f.turn_id JOIN sessions s ON s.id=t.session_id
+                WHERE s.id=%s AND s.owner_id=%s
+            """,
+                (session_id, owner_id),
+            )
+            return [Feedback.model_validate(row) for row in await cur.fetchall()]
+
+    async def export_next_feedback(self, send: SendScore) -> bool:
+        async with self._pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            # Hold only the selected feedback row while delivering its current revision.
+            await cur.execute("""
+                SELECT f.turn_id, f.rating, f.comment, f.created_at, t.trace_id FROM feedback f
+                JOIN turns t ON t.id=f.turn_id WHERE f.next_export_at <= now()
+                ORDER BY f.next_export_at LIMIT 1 FOR UPDATE OF f SKIP LOCKED
+            """)
+            row = await cur.fetchone()
+            if row is None:
+                return False
+            delivered = await send(Feedback.model_validate(row))
+            await cur.execute(
+                """UPDATE feedback SET next_export_at =
+                CASE WHEN %s THEN NULL ELSE now() + interval '1 minute' END WHERE turn_id=%s""",
+                (delivered != "retry", row["turn_id"]),
+            )
+            return True
 
     async def list_turns(self, session_id: UUID, owner_id: UUID) -> list[Turn]:
         async with self._pool.connection() as conn:

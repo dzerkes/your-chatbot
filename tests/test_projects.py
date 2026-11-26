@@ -2,12 +2,16 @@
 
 import argparse
 import asyncio
+import json
+import os
 import subprocess
+import time
 from collections.abc import Iterator
 from decimal import Decimal
 from pathlib import Path
 from uuid import uuid4
 
+import httpx
 import psycopg
 import pytest
 from app.main import create_app
@@ -17,6 +21,7 @@ from chatbot.errors import ToolError
 from chatbot.llm.base import LLMStop, LLMTextDelta, LLMToolCall, LLMUsage
 from chatbot.llm.fake import ScriptedProvider
 from chatbot.llm.registry import ProviderRegistry
+from chatbot.store.base import Turn
 from chatbot.store.postgres import PostgresStore
 from chatbot.tools.base import ToolContext
 from chatbot.tools.pagination import ToolPage
@@ -28,8 +33,11 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from psycopg import errors, sql
 from psycopg.conninfo import make_conninfo
 from pydantic import JsonValue, SecretStr
+from streamlit.testing.v1 import AppTest
 
+from chatbot import feedback as feedback_module
 from chatbot import tracing as tracing_module
+from mcp_servers.tests.server import serve
 
 pytestmark = pytest.mark.integration
 ROOT = Path(__file__).resolve().parents[1]
@@ -438,6 +446,25 @@ async def test_backend_project_chat_and_owner_scoping(
         result = detail["messages"][2]["content"][0]
         assert not result["is_error"] and result["content"]["items"][0]["name"] == "Research Portal"
         assert (await client.get(f"/sessions/{session_id}", headers=bob)).status_code == 404
+        turn_id = detail["messages"][0]["turn_id"]
+        url = f"/sessions/{session_id}/turns/{turn_id}/feedback"
+        assert (await client.put(url, json={"rating": "down"}, headers=bob)).status_code == 404
+        other = (await client.post("/sessions", json={}, headers=alice)).json()["id"]
+        assert (
+            await client.put(url.replace(session_id, other), json={"rating": "up"}, headers=alice)
+        ).status_code == 404
+        assert (
+            await client.put(url, json={"rating": "up", "trace_id": "spoof"}, headers=alice)
+        ).status_code == 422
+        first = await client.put(
+            url, json={"rating": "down", "comment": " unclear "}, headers=alice
+        )
+        assert first.status_code == 200 and first.json()["comment"] == "unclear"
+        revised = (await client.put(url, json={"rating": "up"}, headers=alice)).json()
+        assert revised["created_at"] == first.json()["created_at"] and revised["comment"] is None
+        assert (await client.get(f"/sessions/{session_id}", headers=alice)).json()["feedback"] == [
+            revised
+        ]
 
 
 def test_audit_privileges_and_mutation_trigger(project_database: Settings) -> None:
@@ -467,3 +494,160 @@ def test_audit_privileges_and_mutation_trigger(project_database: Settings) -> No
         for statement in mutations:
             with pytest.raises(psycopg.errors.RaiseException, match="append-only"):
                 conn.execute(statement)
+
+
+def test_ui_feedback_links_to_turn_trace(
+    project_database: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    live = os.environ.get("VERIFY_LIVE_LANGFUSE") == "1"
+    settings = project_database.model_copy(
+        update={
+            "tracing_enabled": True,
+            "memory_enabled": False,
+            "tools_transport": "inprocess",
+            "auth_dev_tokens": SecretStr("feedback-test:feedback-test"),
+        }
+    )
+    provider = ScriptedProvider(
+        [
+            [
+                LLMTextDelta(text="Synthetic reply."),
+                LLMUsage(usage=Usage()),
+                LLMStop(reason="end_turn"),
+            ]
+        ]
+    )
+    monkeypatch.setattr(ProviderRegistry, "get", lambda self, name: provider)
+    monkeypatch.setattr("app.main.configure_logging", lambda settings: None)
+    sent: list[object] = []
+    if not live:
+        monkeypatch.setattr(
+            tracing_module, "OTLPSpanExporter", lambda **kwargs: InMemorySpanExporter()
+        )
+        settings = settings.model_copy(
+            update={
+                "langfuse_public_key": SecretStr("test"),
+                "langfuse_secret_key": SecretStr("test"),
+            }
+        )
+        real_send = feedback_module.send_score
+
+        def accept(request: httpx.Request) -> httpx.Response:
+            assert request.url.path == "/api/public/scores"
+            sent.extend(json.loads(request.content))
+            return httpx.Response(202, json={"message": "Accepted"})
+
+        async def capture(
+            client: AsyncClient, feedback: feedback_module.Feedback
+        ) -> feedback_module.ScoreDelivery:
+            async with AsyncClient(
+                base_url="https://langfuse.test", transport=httpx.MockTransport(accept)
+            ) as recorder:
+                return await real_send(recorder, feedback)
+
+        monkeypatch.setattr(feedback_module, "send_score", capture)
+    with serve(create_app(settings)) as url:
+        monkeypatch.setenv("BACKEND_URL", url)
+        app = AppTest.from_file(str(ROOT / "frontend/app.py"), default_timeout=25).run()
+        app.text_input(key="access_token").set_value("feedback-test").run()
+        app.chat_input[0].set_value("Synthetic feedback verification.").run()
+        assert not app.exception
+        comment = "Synthetic thumbs-down verification"
+        next(w for w in app.text_input if w.label == "Optional feedback").set_value(comment)
+        next(b for b in app.button if b.label == "👎").click().run()
+        assert not app.exception and not app.error
+        session_id = str(app.query_params["session"])
+        detail = httpx.get(
+            f"{url}/sessions/{session_id}", headers={"Authorization": "Bearer feedback-test"}
+        ).json()
+        (vote,) = detail["feedback"]
+        assert vote["rating"] == "down" and vote["comment"] == comment
+        trace_id = vote["trace_id"]
+        assert trace_id
+        if live:
+            print(f"Checking synthetic trace {trace_id}, score {vote['turn_id']}", flush=True)
+        with psycopg.connect(conninfo(settings), autocommit=True) as conn:
+            for _ in range(150):
+                pending = conn.execute(
+                    "SELECT next_export_at FROM feedback WHERE turn_id=%s", (vote["turn_id"],)
+                ).fetchone()
+                if pending == (None,):
+                    break
+                time.sleep(0.5)
+            else:
+                pytest.fail("Feedback was saved but the score is still pending delivery")
+        if not live:
+            assert sent == [
+                {
+                    "id": vote["turn_id"],
+                    "traceId": trace_id,
+                    "name": "user-feedback",
+                    "dataType": "BOOLEAN",
+                    "timestamp": feedback_module.Feedback.model_validate(
+                        vote
+                    ).created_at.isoformat(),
+                    "value": 0,
+                    "comment": comment,
+                }
+            ]
+    if live:
+        with httpx.Client(
+            base_url=str(settings.langfuse_host),
+            auth=(
+                settings.langfuse_public_key.get_secret_value(),
+                settings.langfuse_secret_key.get_secret_value(),
+            ),
+        ) as reader:
+            for _ in range(60):
+                response = reader.get(
+                    "api/public/v3/scores",
+                    params={
+                        "traceId": trace_id,
+                        "id": vote["turn_id"],
+                        "fields": "subject,details",
+                    },
+                )
+                response.raise_for_status()
+                scores = response.json()["data"]
+                if scores:
+                    (score,) = scores
+                    assert score["subject"] == {"kind": "trace", "id": trace_id}
+                    assert score["value"] is False and score["comment"] == comment
+                    print(f"Verified Langfuse trace {trace_id}, score {vote['turn_id']}")
+                    break
+                time.sleep(2)
+            else:
+                pytest.fail(f"Feedback did not appear on trace {trace_id}")
+
+
+async def test_pending_score_retries_latest_vote_after_restart(project_database: Settings) -> None:
+    async with PostgresStore(project_database) as store:
+        owner = await store.upsert_user(User(external_id="pending-score-test", display_name="Test"))
+        session = await store.create_session(owner.id)
+        turn = Turn(session_id=session.id, status="completed", trace_id=uuid4().hex)
+        await store.save_turn(turn, [], owner.id)
+        vote = feedback_module.FeedbackInput(rating="down")
+        first = await store.save_feedback(session.id, turn.id, owner.id, vote, export=True)
+
+        async def unavailable(score: feedback_module.Feedback) -> feedback_module.ScoreDelivery:
+            assert score == first
+            return "retry"
+
+        assert await store.export_next_feedback(unavailable)
+        assert not await store.export_next_feedback(unavailable)
+        revised = await store.save_feedback(
+            session.id,
+            turn.id,
+            owner.id,
+            feedback_module.FeedbackInput(rating="up", comment="Revised"),
+            export=True,
+        )
+        assert first.created_at == revised.created_at
+    async with PostgresStore(project_database) as reopened:
+
+        async def accepted(score: feedback_module.Feedback) -> feedback_module.ScoreDelivery:
+            assert score == revised
+            return "accepted"
+
+        assert await reopened.export_next_feedback(accepted)
+        assert not await reopened.export_next_feedback(accepted)

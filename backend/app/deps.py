@@ -1,5 +1,6 @@
 """Typed access to resources created by the application lifespan."""
 
+import asyncio
 from dataclasses import dataclass
 from typing import Annotated
 
@@ -21,6 +22,7 @@ class Runtime:
     settings: Settings
     chatbot: Agent
     dev_tokens: tuple[DevToken, ...]
+    score_wake: asyncio.Event
 
 
 def get_runtime(request: Request) -> Runtime:

@@ -6,7 +6,7 @@ from typing import Literal, Self
 from uuid import UUID
 
 import httpx
-from pydantic import BaseModel, JsonValue, TypeAdapter, ValidationError, model_validator
+from pydantic import BaseModel, Field, JsonValue, TypeAdapter, ValidationError, model_validator
 
 
 class ApiError(Exception):
@@ -29,7 +29,14 @@ class ChatMessage(BaseModel):
     content: list[dict[str, JsonValue]]
 
 
+class TurnFeedback(BaseModel):
+    turn_id: UUID
+    rating: Literal["up", "down"]
+    comment: str | None = None
+
+
 class SessionDetail(SessionSummary):
+    feedback: list[TurnFeedback] = Field(default_factory=list)
     messages: list[ChatMessage]
 
 
@@ -172,6 +179,14 @@ class ApiClient:
             return detail
         except ValidationError as exc:
             raise ApiError("The chat service sent an invalid conversation.") from exc
+
+    def rate_turn(
+        self, session_id: UUID, turn_id: UUID, rating: Literal["up", "down"], comment: str
+    ) -> None:
+        body: dict[str, str] = {"rating": rating}
+        if comment.strip():
+            body["comment"] = comment.strip()
+        self._request("PUT", f"sessions/{session_id}/turns/{turn_id}/feedback", body=body)
 
     def list_memories(self) -> list[RememberedFact] | None:
         """The user's remembered facts, or None when memory is disabled on the server."""

@@ -16,7 +16,8 @@ from app.auth import parse_dev_tokens
 from app.main import create_app
 from chatbot.agent import Agent
 from chatbot.config import Settings
-from chatbot.errors import ChatbotError, ProviderError
+from chatbot.errors import ChatbotError, NotFoundError, ProviderError
+from chatbot.feedback import Feedback, FeedbackInput, ScoreDelivery
 from chatbot.llm.base import (
     LLMEvent,
     LLMProvider,
@@ -27,6 +28,7 @@ from chatbot.llm.base import (
     LLMUsage,
 )
 from chatbot.llm.fake import ScriptedProvider
+from chatbot.store.base import Turn
 from chatbot.store.memory import MemoryStore
 from chatbot.store.memory_store import InMemoryUserMemoryStore
 from chatbot.tools.base import Tool, ToolContext, ToolInput
@@ -163,7 +165,7 @@ def test_sessions_are_owned_and_chat_checks_before_streaming() -> None:
             assert denied.headers["content-type"].startswith("application/json")
         assert provider.requests == []
         detail = client.get(f"/sessions/{session_id}", headers=ALICE).json()
-        assert detail == {**session, "messages": []}
+        assert detail == {**session, "messages": [], "feedback": []}
         assert client.post("/sessions", headers=ALICE).status_code == 201
 
 
@@ -423,3 +425,63 @@ def test_chat_limits_apply_across_sessions_before_generation(
         assert "Try again" in blocked[0].message
         assert chat_new(BOB)[-1].type == "turn_completed"
         assert len(provider.requests) == 2
+
+
+def test_feedback_is_owned_revisable_and_queued_for_trace() -> None:
+    harness = api(ScriptedProvider([answer()]))
+    with TestClient(harness.app) as client:
+        session_id = client.post("/sessions", json={}, headers=ALICE).json()["id"]
+        client.post(f"/sessions/{session_id}/chat", json={"message": "Hi"}, headers=ALICE)
+        detail = client.get(f"/sessions/{session_id}", headers=ALICE).json()
+        turn_id = detail["messages"][0]["turn_id"]
+        url = f"/sessions/{session_id}/turns/{turn_id}/feedback"
+        assert client.put(url, json={"rating": "down"}, headers=BOB).status_code == 404
+        missing = f"/sessions/{session_id}/turns/{uuid4()}/feedback"
+        assert client.put(missing, json={"rating": "up"}, headers=ALICE).status_code == 404
+        for body in ({"rating": "meh"}, {"rating": "up", "comment": "x" * 2001}, {}):
+            assert client.put(url, json=body, headers=ALICE).status_code == 422
+        first = client.put(url, json={"rating": "down", "comment": "  wrong  "}, headers=ALICE)
+        assert first.status_code == 200
+        assert first.json()["rating"] == "down" and first.json()["comment"] == "wrong"
+        revised = client.put(url, json={"rating": "up"}, headers=ALICE).json()
+        assert revised["created_at"] == first.json()["created_at"]
+        assert revised["comment"] is None
+        detail = client.get(f"/sessions/{session_id}", headers=ALICE).json()
+        assert detail["feedback"] == [revised]
+
+
+async def test_memory_store_exports_latest_vote_and_retries() -> None:
+    store = MemoryStore()
+    owner = await store.upsert_user(User(external_id="alice", display_name="Alice"))
+    session = await store.create_session(owner.id)
+    traced = Turn(session_id=session.id, status="completed", trace_id=uuid4().hex)
+    untraced = Turn(session_id=session.id, status="completed")
+    running = Turn(session_id=session.id, status="running", trace_id=uuid4().hex)
+    for turn in (traced, untraced, running):
+        await store.save_turn(turn, [], owner.id)
+    with pytest.raises(NotFoundError):
+        await store.save_feedback(
+            session.id, running.id, owner.id, FeedbackInput(rating="up"), export=True
+        )
+    await store.save_feedback(
+        session.id, untraced.id, owner.id, FeedbackInput(rating="up"), export=True
+    )
+    await store.save_feedback(
+        session.id, traced.id, owner.id, FeedbackInput(rating="down"), export=True
+    )
+    sent: list[Feedback] = []
+    outcome: ScoreDelivery = "retry"
+
+    async def send(feedback: Feedback) -> ScoreDelivery:
+        sent.append(feedback)
+        return outcome
+
+    assert await store.export_next_feedback(send)
+    assert not await store.export_next_feedback(send)  # retry is scheduled later
+    latest = await store.save_feedback(
+        session.id, traced.id, owner.id, FeedbackInput(rating="up", comment="ok"), export=True
+    )
+    outcome = "accepted"
+    assert await store.export_next_feedback(send)
+    assert not await store.export_next_feedback(send)
+    assert [f.rating for f in sent] == ["down", "up"] and sent[-1] == latest

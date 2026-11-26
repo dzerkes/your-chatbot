@@ -3,6 +3,7 @@
 from typing import Annotated
 from uuid import UUID
 
+from chatbot.feedback import Feedback, FeedbackInput
 from chatbot.store.base import Session
 from chatbot.types import DomainModel, Message
 from fastapi import APIRouter, Depends, HTTPException
@@ -23,6 +24,7 @@ class CreateSessionRequest(DomainModel):
 
 class SessionDetail(Session):
     messages: list[Message]
+    feedback: list[Feedback]
 
 
 async def owned_session(session_id: UUID, user: CurrentUser, runtime: RuntimeDep) -> Session:
@@ -56,4 +58,20 @@ async def get_session(
     session: OwnedSession, user: CurrentUser, runtime: RuntimeDep
 ) -> SessionDetail:
     messages = await runtime.chatbot.store.list_messages(session.id, user.id)
-    return SessionDetail(**session.model_dump(), messages=messages)
+    feedback = await runtime.chatbot.store.list_feedback(session.id, user.id)
+    return SessionDetail(**session.model_dump(), messages=messages, feedback=feedback)
+
+
+@router.put("/{session_id}/turns/{turn_id}/feedback")
+async def rate_turn(
+    session: OwnedSession,
+    turn_id: UUID,
+    user: CurrentUser,
+    payload: FeedbackInput,
+    runtime: RuntimeDep,
+) -> Feedback:
+    saved = await runtime.chatbot.store.save_feedback(
+        session.id, turn_id, user.id, payload, export=runtime.settings.tracing_enabled
+    )
+    runtime.score_wake.set()
+    return saved

@@ -8,6 +8,7 @@ from chatbot.agent import Agent
 from chatbot.app import build_chatbot
 from chatbot.config import Settings
 from chatbot.errors import ChatbotError, ConflictError, NotFoundError
+from chatbot.feedback import score_exporter
 from chatbot.logging import configure_logging
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -30,8 +31,11 @@ def create_app(
         configured = settings if settings is not None else Settings()
         tokens = parse_dev_tokens(configured.auth_dev_tokens)
         configure_logging(configured)
-        async with chatbot_factory(configured) as chatbot:
-            application.state.runtime = Runtime(configured, chatbot, tokens)
+        async with (
+            chatbot_factory(configured) as chatbot,
+            score_exporter(configured, chatbot.store) as score_wake,
+        ):
+            application.state.runtime = Runtime(configured, chatbot, tokens, score_wake)
             try:
                 yield
             finally:
