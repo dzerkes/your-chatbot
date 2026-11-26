@@ -10,11 +10,17 @@ All important changes to this project are recorded here, newest first.
 
 ## Unreleased
 
+### 2026-11-26
+
+| Plan id | Commit | Type | Change |
+|---|---|---|---|
+| C27 | Pending | Added | Postgres records each admitted turn and executed tool call, including the question, arguments, outcome and returned source identifiers. The application can append records. A database trigger rejects updates, deletes and truncation. |
+
 ### 2026-11-25
 
 | Plan id | Commit | Type | Change |
 |---|---|---|---|
-| C26 | Pending | Added | Chat admission enforces a rolling per-user request limit and UTC daily spending cap across sessions. Rejected requests stream a readable reason before generation. |
+| C26 | `553b8d2` | Added | Chat admission enforces a rolling per-user request limit and UTC daily spending cap across sessions. Rejected requests stream a readable reason before generation. |
 | C25 | `eb9e02b` | Added | The LLM gateway retries transient failures with capped backoff and jitter, then tries the configured fallback models in order. A partial response is preserved if streaming fails. |
 | C25 | `eb9e02b` | Added | Per-model USD rates account for cache reads, cache writes and long-context pricing. Generation spans identify the serving model and cost. Saved turns and completion events total reported costs across tool steps and summary calls. |
 | C24 | `b614f2d` | Added | User memory behind `MEMORY_ENABLED`: `memory` tool (remember, recall, forget), `user_memory` table, recent facts in the system prompt, `GET/DELETE /memories` and a "What I remember" UI panel. |

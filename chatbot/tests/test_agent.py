@@ -2,10 +2,12 @@
 
 import asyncio
 from collections.abc import Sequence
+from unittest.mock import AsyncMock
 from uuid import UUID
 
 import pytest
 from chatbot.agent import Agent
+from chatbot.audit import AuditLog
 from chatbot.config import Settings
 from chatbot.errors import ProviderError, ToolError
 from chatbot.llm.base import LLMEvent, LLMStop, LLMTextDelta, LLMToolCall, LLMUsage
@@ -228,3 +230,31 @@ async def test_persistence_failure_does_not_report_completion() -> None:
     events = [event async for event in agent.respond(new_session.id, "Hi", user)]
     assert isinstance(events[-1], TurnFailed) and events[-1].code == "store_error"
     assert "private" not in events[-1].message
+
+
+async def test_audit_tracks_executed_calls_and_errors() -> None:
+    agent, _, _, user, session = await setup([calls("first", "fail"), answer()])
+    audit = AsyncMock(spec=AuditLog)
+    agent.audit = audit
+    events = [event async for event in agent.respond(session.id, "Find projects", user)]
+    assert isinstance(events[-1], TurnCompleted)
+    context, question = audit.turn.await_args.args
+    assert (context.user.id, context.turn_id, question) == (
+        user.id,
+        events[-1].turn_id,
+        "Find projects",
+    )
+    assert [(args[1].id, args[3]) for args, _ in audit.tool.await_args_list] == [
+        ("first", "returned"),
+        ("fail", "failed"),
+    ]
+
+
+async def test_audit_write_failure_stops_before_generation() -> None:
+    agent, _, provider, user, session = await setup([answer()])
+    audit = AsyncMock(spec=AuditLog)
+    audit.turn.side_effect = RuntimeError("database unavailable")
+    agent.audit = audit
+    events = [event async for event in agent.respond(session.id, "Hi", user)]
+    assert isinstance(events[-1], TurnFailed)
+    assert not provider.requests
